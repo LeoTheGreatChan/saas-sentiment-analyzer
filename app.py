@@ -1,40 +1,33 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from transformers import pipeline
 
 # 1. Page Config
 st.set_page_config(page_title="SaaS Product Insights", layout="wide")
 st.title("📊 SaaS Sentiment & Feature Health Dashboard")
-st.markdown("Analyzing user feedback to drive the product roadmap.")
+st.markdown("Using Deep Learning (Transformers) to analyze user feedback automatically.")
 
-# 2. Setup Sentiment Engine with PM Tuning
-analyzer = SentimentIntensityAnalyzer()
+# 2. Load the Automatic AI Model
+# We use a 'cache' so the model only downloads once
+@st.cache_resource
+def load_model():
+    # This model is specifically trained for sentiment analysis
+    return pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
 
-# Custom Lexicon: We manually tell the AI that these words are important for SaaS
-new_words = {
-    'crashes': -4.0,
-    'slow': -2.0,
-    'confusing': -2.0,
-    'high': -1.5,
-    'automation': 2.0
-}
-analyzer.lexicon.update(new_words)
+sentiment_pipeline = load_model()
 
-def categorize_feedback(text):
-    score = analyzer.polarity_scores(text)['compound']
-    # PM Thresholds:
-    # Anything > 0.3 is clearly happy
-    # Anything < 0.0 is a pain point (including "slow" or "crashes")
-    # Anything in between is Neutral
-    if score >= 0.3:
-        return score, 'Positive'
-    elif score < 0.0:
-        return score, 'Negative'
-    else:
-        return score, 'Neutral'
+def get_automatic_sentiment(text):
+    # The AI looks at the whole sentence context
+    result = sentiment_pipeline(text)[0]
+    label = result['label'] # 'POSITIVE' or 'NEGATIVE'
+    score = result['score'] # Confidence percentage
+    
+    # Standardize score to a -1 to 1 scale for our charts
+    final_score = score if label == 'POSITIVE' else -score
+    return pd.Series([final_score, label.capitalize()])
 
-# 3. Data Loading (Mock Data for now)
+# 3. Data Loading (Your Mock Data)
 data = {
     'Review': [
         "Love the automation features!", 
@@ -49,14 +42,14 @@ data = {
 }
 df = pd.DataFrame(data)
 
-# Apply the tuned sentiment logic
-df[['Score', 'Sentiment']] = df['Review'].apply(lambda x: pd.Series(categorize_feedback(x)))
+# Apply the automatic AI logic
+df[['Score', 'Sentiment']] = df['Review'].apply(get_automatic_sentiment)
 
 # 4. Layout: Top Metrics
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Reviews", len(df))
-col2.metric("Avg. Sentiment Score", f"{df['Score'].mean():.2f}")
-col3.metric("Critical Alerts", len(df[df['Sentiment'] == 'Negative']))
+col2.metric("Avg. Sentiment Confidence", f"{df['Score'].abs().mean():.2f}")
+col3.metric("Negative Issues", len(df[df['Sentiment'] == 'Negative']))
 
 st.divider()
 
@@ -66,15 +59,15 @@ left_chart, right_chart = st.columns(2)
 with left_chart:
     st.subheader("Sentiment Distribution")
     fig_pie = px.pie(df, names='Sentiment', color='Sentiment', 
-                     color_discrete_map={'Positive':'#2ecc71', 'Negative':'#e74c3c', 'Neutral':'#95a5a6'})
+                     color_discrete_map={'Positive':'#2ecc71', 'Negative':'#e74c3c'})
     st.plotly_chart(fig_pie, use_container_width=True)
 
 with right_chart:
-    st.subheader("Sentiment by Feature")
-    # Sorting by score so the worst features jump out
+    st.subheader("SaaS Health Score by Feature")
+    # Sort so the worst problems are at the top
     fig_bar = px.bar(df.sort_values('Score'), x='Feature', y='Score', color='Sentiment',
-                     color_discrete_map={'Positive':'#2ecc71', 'Negative':'#e74c3c', 'Neutral':'#95a5a6'})
+                     color_discrete_map={'Positive':'#2ecc71', 'Negative':'#e74c3c'})
     st.plotly_chart(fig_bar, use_container_width=True)
 
-st.subheader("Raw Feedback Analysis")
+st.subheader("Raw Feedback: Deep Learning Analysis")
 st.dataframe(df[['Date', 'Feature', 'Review', 'Sentiment', 'Score']], use_container_width=True)
