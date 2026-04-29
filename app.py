@@ -21,8 +21,17 @@ data = {
 df = pd.DataFrame(data)
 
 # 3. Sentiment Logic
-df['Score'] = df['Review'].apply(lambda x: TextBlob(x).sentiment.polarity)
-df['Sentiment'] = df['Score'].apply(lambda x: 'Positive' if x > 0 else ('Negative' if x < 0 else 'Neutral'))
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+analyzer = SentimentIntensityAnalyzer()
+
+def get_vader_sentiment(text):
+    # VADER gives a 'compound' score from -1 to 1
+    score = analyzer.polarity_scores(text)['compound']
+    return score
+
+df['Score'] = df['Review'].apply(get_vader_sentiment)
+df['Sentiment'] = df['Score'].apply(lambda x: 'Positive' if x >= 0.05 else ('Negative' if x <= -0.05 else 'Neutral'))
 
 # 4. Layout: Top Metrics
 col1, col2, col3 = st.columns(3)
