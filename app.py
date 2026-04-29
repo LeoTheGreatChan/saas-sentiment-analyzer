@@ -71,3 +71,17 @@ with right_chart:
 
 st.subheader("Raw Feedback: Deep Learning Analysis")
 st.dataframe(df[['Date', 'Feature', 'Review', 'Sentiment', 'Score']], use_container_width=True)
+
+st.divider()
+st.subheader("🚀 Live Sentiment Tester")
+user_input = st.text_input("Type a review to test the AI's logic (e.g., 'The support was surprisingly helpful'):")
+
+if user_input:
+    # Run the same automatic AI logic on the user's text
+    score, sentiment = get_automatic_sentiment(user_input)
+    
+    # Display the result in a cool way
+    if sentiment == 'Positive':
+        st.success(f"The AI thinks this is **{sentiment}** (Confidence: {score:.2f})")
+    else:
+        st.error(f"The AI thinks this is **{sentiment}** (Confidence: {score:.2f})")
