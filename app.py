@@ -12,7 +12,7 @@ st.markdown("Analyzing user feedback to drive the product roadmap.")
 analyzer = SentimentIntensityAnalyzer()
 
 # Custom Lexicon: We manually tell the AI that these words are important for SaaS
-'''new_words = {
+new_words = {
     'crashes': -4.0,
     'slow': -2.0,
     'confusing': -2.0,
@@ -20,7 +20,7 @@ analyzer = SentimentIntensityAnalyzer()
     'automation': 2.0
 }
 analyzer.lexicon.update(new_words)
-'''
+
 def categorize_feedback(text):
     score = analyzer.polarity_scores(text)['compound']
     # PM Thresholds:
