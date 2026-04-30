@@ -91,10 +91,32 @@ if not df.empty:
                 fig_line.add_hline(y=0, line_dash="dash", line_color="gray")
                 st.plotly_chart(fig_line, use_container_width=True)
             else:
-                st.info("Reviews cover a single day. Showing hourly distribution:")
-                fig_hour = px.histogram(df, x=df['Date'].dt.hour, y='Score', histfunc='avg')
-                st.plotly_chart(fig_hour, use_container_width=True)
-
+                    # If all reviews are from 1 day, show a Bar Chart by Hour
+                    st.info("The 200 most recent reviews are from the same day. Showing hourly breakdown:")
+                    
+                    # Create an 'Hour' column for better labeling
+                    df['Hour'] = df['Date'].dt.hour
+                    
+                    # Group data to ensure the chart is clean
+                    hourly_df = df.groupby('Hour')['Score'].mean().reset_index()
+                    
+                    fig_hour = px.bar(
+                        hourly_df, 
+                        x='Hour', 
+                        y='Score',
+                        labels={
+                            'Hour': 'Time of Day (24h Format)', 
+                            'Score': 'Average Sentiment Score'
+                        },
+                        title="Hourly Sentiment Snapshot",
+                        color='Score',
+                        color_continuous_scale='RdYlGn'
+                    )
+                    
+                    # Force the X-axis to show every hour clearly
+                    fig_hour.update_layout(xaxis_tickmode='linear', xaxis_dtick=1)
+                    
+                    st.plotly_chart(fig_hour, use_container_width=True)
     with tab2:
         st.subheader("High-Priority Customer Pain Points")
         # Inclusion filter: Score below -0.5 OR any Negative review with likes
