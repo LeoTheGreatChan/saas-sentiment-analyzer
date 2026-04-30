@@ -92,3 +92,14 @@ with st.expander("🔍 Search All Reviews"):
         st.dataframe(df[df['Review'].str.contains(search, case=False)])
     else:
         st.dataframe(df)
+
+# 7. Download Data
+st.divider()
+st.subheader("📥 Export for Product Team")
+csv = df.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="Download Analyzed Reviews as CSV",
+    data=csv,
+    file_name='uber_sentiment_analysis.csv',
+    mime='text/csv',
+)
