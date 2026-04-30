@@ -4,13 +4,14 @@ import plotly.express as px
 from transformers import pipeline
 
 # 1. Page Configuration
-st.set_page_config(page_title="Uber Product Insights", layout="wide")
-st.title("🚗 Uber App: Strategic Sentiment Dashboard")
-st.markdown("Analyze user feedback trends and drill down into specific app versions.")
+st.set_page_config(page_title="Uber Insights", layout="wide")
+st.title("🚗 Uber Product Insights Dashboard")
+st.markdown("Use the filters below to analyze sentiment across app versions and time.")
 
 # 2. AI Model Loading (Cached)
 @st.cache_resource
 def load_sentiment_model():
+    # Minimalistic approach to avoid memory overhead
     return pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
 
 sentiment_pipeline = load_sentiment_model()
@@ -19,20 +20,17 @@ sentiment_pipeline = load_sentiment_model()
 @st.cache_data
 def get_processed_data():
     try:
-        # Load the Uber Dataset
         df = pd.read_csv("uber_reviews.csv")
-        
-        # Standardize and Clean
+        # Standardize Columns
         df = df.rename(columns={'content': 'Review', 'appVersion': 'Version', 'at': 'Date', 'thumbsUpCount': 'Likes'})
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df = df.dropna(subset=['Date'])
         df['Version'] = df['Version'].fillna('Unknown')
         
-        # Take the 200 most recent for analysis
-        df = df.sort_values('Date', ascending=False).head(200)
+        # Analyze 150 reviews (keeping it safe for cloud memory)
+        df = df.sort_values('Date', ascending=False).head(150)
 
         def analyze_text(text):
-            # Transformers have a 512 character limit
             result = sentiment_pipeline(str(text)[:512])[0]
             score = result['score'] if result['label'] == 'POSITIVE' else -result['score']
             return pd.Series([score, result['label'].capitalize()])
@@ -40,32 +38,57 @@ def get_processed_data():
         df[['Score', 'Sentiment']] = df['Review'].apply(analyze_text)
         return df
     except Exception as e:
-        st.error(f"Error processing data: {e}")
+        st.error(f"Data Loading Error: {e}")
         return pd.DataFrame()
 
-with st.spinner("AI is analyzing 200 reviews..."):
+with st.spinner("AI is analyzing reviews..."):
     df = get_processed_data()
 
-# 4. Top-Level Metrics
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Reviews", len(df))
-m2.metric("Avg Sentiment", f"{df['Score'].mean():.2f}")
-m3.metric("Negative Count", len(df[df['Sentiment'] == 'Negative']))
-m4.metric("High Engagement", len(df[df['Likes'] > 2]))
+if not df.empty:
+    # 4. Filter Sidebar (The Stable Interactivity)
+    st.sidebar.header("Filter Analytics")
+    versions = ["All"] + sorted(df['Version'].unique().tolist())
+    selected_version = st.sidebar.selectbox("Select App Version to Drill Down", versions)
 
-st.divider()
+    # 5. Dynamic Filtering
+    if selected_version != "All":
+        display_df = df[df['Version'] == selected_version]
+    else:
+        display_df = df
 
-# 5. Interactive Visualizations
-selected_version = None
+    # 6. Top Metrics
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Reviews Shown", len(display_df))
+    m2.metric("Avg Sentiment", f"{display_df['Score'].mean():.2f}")
+    m3.metric("Negative Reviews", len(display_df[display_df['Sentiment'] == 'Negative']))
 
-tab1, tab2 = st.tabs(["📊 Market Health", "⚠️ Critical Alerts"])
+    st.divider()
 
-with tab1:
-    left, right = st.columns(2)
-    
-    with left:
+    # 7. Visualizations
+    col1, col2 = st.columns(2)
+
+    with col1:
         st.subheader("Sentiment by Version")
-        st.caption("💡 Click a bar to filter the table below")
-        v_data = df.groupby('Version')['Score'].mean().reset_index().sort_values('Version')
-        
-        fig_bar = px.bar(v_data, x='Version', y='Score', color
+        v_data = df.groupby('Version')['Score'].mean().reset_index()
+        fig_bar = px.bar(v_data, x='Version', y='Score', color='Score', 
+                         color_continuous_scale='RdYlGn', title="Overall Version Health")
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    with col2:
+        st.subheader("Time-Based Trend")
+        display_df['Day'] = display_df['Date'].dt.date
+        trend = display_df.groupby('Day')['Score'].mean().reset_index()
+        if len(trend) > 1:
+            fig_trend = px.line(trend, x='Day', y='Score', markers=True)
+        else:
+            fig_trend = px.bar(display_df.groupby(display_df['Date'].dt.hour)['Score'].mean().reset_index(), 
+                               x='Date', y='Score', labels={'Date': 'Hour (24h)'})
+        st.plotly_chart(fig_trend, use_container_width=True)
+
+    # 8. Detailed Review Explorer
+    st.subheader(f"📋 Reviews: {selected_version}")
+    st.dataframe(display_df[['Date', 'Version', 'Review', 'Sentiment', 'Score', 'Likes']], use_container_width=True)
+
+    # 9. Download
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Download Full Analysis", data=csv, file_name='uber_analysis.csv')
