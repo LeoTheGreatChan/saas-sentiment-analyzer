@@ -16,24 +16,32 @@ def load_sentiment_model():
 
 sentiment_pipeline = load_sentiment_model()
 
-# 3. Data Loading & AI Processing (Increased to 200 Reviews)
+# 3. Data Loading & AI Processing
 @st.cache_data
 def get_processed_data():
     try:
         # Load the Uber Dataset
         df = pd.read_csv("uber_reviews.csv")
         
-        # Mapping Uber columns
-        df = df.rename(columns={'content': 'Review', 'appVersion': 'Version', 'at': 'Date', 'thumbsUpCount': 'Likes'})
-        df['Version'] = df['Version'].fillna('Unknown')
-        df['Date'] = pd.to_datetime(df['Date'])
+        # Standardize Columns
+        df = df.rename(columns={
+            'content': 'Review', 
+            'appVersion': 'Version', 
+            'at': 'Date', 
+            'thumbsUpCount': 'Likes'
+        })
         
-        # Increase Sample Size to 200 for better statistical significance
+        # FORCE DATE CONVERSION: Essential for the Trend Line
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        df = df.dropna(subset=['Date']) # Remove unreadable dates
+        
+        # Fill missing versions and take top 200
+        df['Version'] = df['Version'].fillna('Unknown')
         df = df.sort_values('Date', ascending=False).head(200)
 
         # Batch AI Sentiment Analysis
         def analyze_text(text):
-            # Transformers have a 512 character limit
+            # Limit to 512 chars for Transformer stability
             result = sentiment_pipeline(str(text)[:512])[0]
             score = result['score'] if result['label'] == 'POSITIVE' else -result['score']
             return pd.Series([score, result['label'].capitalize()])
@@ -41,96 +49,73 @@ def get_processed_data():
         df[['Score', 'Sentiment']] = df['Review'].apply(analyze_text)
         return df
     except Exception as e:
-        st.error(f"Error loading data: {e}")
+        st.error(f"Critical Data Error: {e}")
         return pd.DataFrame()
 
-# Run the heavy lifting
+# Run the processing
 with st.spinner("AI is analyzing 200 reviews... this may take 30 seconds on the first run."):
     df = get_processed_data()
 
-# 4. Top-Level Metrics
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Reviews Analyzed", len(df))
-col2.metric("Avg Score", f"{df['Score'].mean():.2f}")
-col3.metric("Negative Reviews", len(df[df['Sentiment'] == 'Negative']))
-col4.metric("Avg Likes/Review", f"{df['Likes'].mean():.1f}")
+if not df.empty:
+    # 4. Top-Level Metrics
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Reviews Analyzed", len(df))
+    col2.metric("Avg Score", f"{df['Score'].mean():.2f}")
+    col3.metric("Negative Reviews", len(df[df['Sentiment'] == 'Negative']))
+    col4.metric("Avg Likes/Review", f"{df['Likes'].mean():.1f}")
 
-st.divider()
+    st.divider()
 
-# 5. Visualizations: The "PM Story"
-tab1, tab2 = st.tabs(["📊 Market Health", "⚠️ Critical Alerts"])
+    # 5. Visualizations
+    tab1, tab2 = st.tabs(["📊 Market Health", "⚠️ Critical Alerts"])
 
-with tab1:
-    left, right = st.columns(2)
-    
-    with left:
-        st.subheader("Sentiment by Version")
-        # Showing how different releases are performing
-        version_avg = df.groupby('Version')['Score'].mean().reset_index()
-        fig_bar = px.bar(version_avg.sort_values('Version'), x='Version', y='Score', 
-                         color='Score', color_continuous_scale='RdYlGn')
-        st.plotly_chart(fig_bar, use_container_width=True)
+    with tab1:
+        left, right = st.columns(2)
         
-    with right:
-        st.subheader("Sentiment Trend Over Time")
+        with left:
+            st.subheader("Sentiment by Version")
+            version_avg = df.groupby('Version')['Score'].mean().reset_index()
+            fig_bar = px.bar(version_avg.sort_values('Version'), x='Version', y='Score', 
+                             color='Score', color_continuous_scale='RdYlGn',
+                             range_color=[-1, 1])
+            st.plotly_chart(fig_bar, use_container_width=True)
+            
+        with right:
+            st.subheader("Sentiment Trend")
+            # Group by day for stability (avoiding resample errors)
+            df['Day'] = df['Date'].dt.date
+            trend_df = df.groupby('Day')['Score'].mean().reset_index()
+
+            if len(trend_df) > 1:
+                fig_line = px.line(trend_df, x='Day', y='Score', markers=True)
+                fig_line.add_hline(y=0, line_dash="dash", line_color="gray")
+                st.plotly_chart(fig_line, use_container_width=True)
+            else:
+                st.info("Reviews cover a single day. Showing hourly distribution:")
+                fig_hour = px.histogram(df, x=df['Date'].dt.hour, y='Score', histfunc='avg')
+                st.plotly_chart(fig_hour, use_container_width=True)
+
+    with tab2:
+        st.subheader("High-Priority Customer Pain Points")
+        # Inclusion filter: Score below -0.5 OR any Negative review with likes
+        critical_df = df[
+            (df['Score'] < -0.5) | 
+            ((df['Sentiment'] == 'Negative') & (df['Likes'] > 0))
+        ].sort_values(by=['Likes', 'Score'], ascending=[False, True])
         
-        # 1. Ensure Date is the Index for resampling
-        trend_data = df.copy().set_index('Date')
-        
-        # 2. Smart Resampling: 
-        # If the reviews span multiple days, use 'D' (Daily)
-        # If they are all from today, use 'H' (Hourly)
-        days_span = (trend_data.index.max() - trend_data.index.min()).days
-        freq = 'D' if days_span > 1 else 'H'
-        
-        # 3. Aggregate and Reset Index for Plotly
-        trend_df = trend_data.resample(freq)['Score'].mean().reset_index()
-        
-        # 4. Handle missing periods (empty hours/days) to keep the line continuous
-        trend_df = trend_df.dropna(subset=['Score'])
-    
-        if not trend_df.empty:
-            fig_line = px.line(trend_df, x='Date', y='Score', 
-                              title=f"Sentiment Trend ({'Daily' if freq=='D' else 'Hourly'})",
-                              markers=True,
-                              color_discrete_sequence=['#3498db'])
-            # Add a horizontal line at 0 for "Neutral"
-            fig_line.add_hline(y=0, line_dash="dash", line_color="gray")
-            st.plotly_chart(fig_line, use_container_width=True)
+        if not critical_df.empty:
+            st.dataframe(critical_df[['Version', 'Review', 'Likes', 'Score']], use_container_width=True)
         else:
-            st.info("Not enough date variety in this sample to show a trend line.")
+            st.info("No critical alerts found. The current sample is relatively healthy!")
 
-with tab2:
-    st.subheader("High-Priority Customer Pain Points")
-    st.markdown("Reviews that are **highly negative** or have gathered **user agreement (Likes)**.")
-    
-    # NEW FILTER: Show if it's Very Negative OR if it has Likes
-    # This ensures the table is rarely empty
-    critical_df = df[
-        (df['Score'] < -0.5) | 
-        ((df['Sentiment'] == 'Negative') & (df['Likes'] > 0))
-    ].sort_values(by=['Likes', 'Score'], ascending=[False, True])
-    
-    if not critical_df.empty:
-        st.dataframe(critical_df[['Version', 'Review', 'Likes', 'Score']], use_container_width=True)
-    else:
-        st.info("No critical alerts found in this sample. Users seem relatively happy with the recent versions!")
+    # 6. Raw Data Search & Export
+    with st.expander("🔍 Search & Export Raw Data"):
+        search = st.text_input("Filter by keyword (e.g., 'price', 'map', 'driver')")
+        filtered_df = df[df['Review'].str.contains(search, case=False)] if search else df
+        st.dataframe(filtered_df)
         
-# 6. Raw Data Search
-with st.expander("🔍 Search All Reviews"):
-    search = st.text_input("Filter by keyword (e.g., 'price', 'map', 'driver')")
-    if search:
-        st.dataframe(df[df['Review'].str.contains(search, case=False)])
-    else:
-        st.dataframe(df)
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button(label="Download Full Analysis as CSV", data=csv, file_name='uber_analysis.csv')
 
-# 7. Download Data
-st.divider()
-st.subheader("📥 Export for Product Team")
-csv = df.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="Download Analyzed Reviews as CSV",
-    data=csv,
-    file_name='uber_sentiment_analysis.csv',
-    mime='text/csv',
-)
+else:
+    st.warning("Please ensure 'uber_reviews.csv' is uploaded to your repository.")
