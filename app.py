@@ -27,21 +27,35 @@ def get_automatic_sentiment(text):
     final_score = score if label == 'POSITIVE' else -score
     return pd.Series([final_score, label.capitalize()])
 
-# 3. Data Loading (Your Mock Data)
-data = {
-    'Review': [
-        "Love the automation features!", 
-        "Mobile app crashes often", 
-        "Pricing is too high for small teams", 
-        "Great UI/UX design",
-        "The API documentation is confusing", 
-        "Customer support was slow"
-    ],
-    'Feature': ['Automation', 'Mobile', 'Pricing', 'UI/UX', 'API', 'Support'],
-    'Date': pd.to_datetime(['2024-01-01', '2024-01-05', '2024-01-10', '2024-01-15', '2024-01-20', '2024-01-25'])
-}
-df = pd.DataFrame(data)
+# 3. Data Loading (Uber CSV)
+@st.cache_data
+def load_data():
+    # Make sure your file on GitHub is named exactly 'uber_reviews.csv'
+    try:
+        df = pd.read_csv("uber_reviews.csv")
+        
+        # Mapping Uber columns to our dashboard logic
+        # 'content' = Review text
+        # 'appVersion' = The software version (our "Feature" tracker)
+        # 'at' = The date/time
+        df = df.rename(columns={
+            'content': 'Review', 
+            'appVersion': 'Feature', 
+            'at': 'Date'
+        })
 
+        # Data Cleaning
+        df['Feature'] = df['Feature'].fillna('General/Unknown')
+        df['Date'] = pd.to_datetime(df['Date'])
+        
+        # We take the most recent 50 reviews to keep the AI processing fast
+        return df.sort_values('Date', ascending=False).head(50)
+    
+    except FileNotFoundError:
+        st.error("CSV file not found. Please upload 'uber_reviews.csv' to your GitHub repo.")
+        return pd.DataFrame()
+
+df = load_data()
 # Apply the automatic AI logic
 df[['Score', 'Sentiment']] = df['Review'].apply(get_automatic_sentiment)
 
