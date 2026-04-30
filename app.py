@@ -80,11 +80,20 @@ with tab1:
 
 with tab2:
     st.subheader("High-Priority Customer Pain Points")
-    st.markdown("Reviews that are **Negative** AND have **High Engagement** (Likes).")
-    # A PM would use this list to write Jira tickets
-    critical_df = df[(df['Sentiment'] == 'Negative') & (df['Likes'] > 2)].sort_values('Likes', ascending=False)
-    st.dataframe(critical_df[['Version', 'Review', 'Likes', 'Score']], use_container_width=True)
-
+    st.markdown("Reviews that are **highly negative** or have gathered **user agreement (Likes)**.")
+    
+    # NEW FILTER: Show if it's Very Negative OR if it has Likes
+    # This ensures the table is rarely empty
+    critical_df = df[
+        (df['Score'] < -0.5) | 
+        ((df['Sentiment'] == 'Negative') & (df['Likes'] > 0))
+    ].sort_values(by=['Likes', 'Score'], ascending=[False, True])
+    
+    if not critical_df.empty:
+        st.dataframe(critical_df[['Version', 'Review', 'Likes', 'Score']], use_container_width=True)
+    else:
+        st.info("No critical alerts found in this sample. Users seem relatively happy with the recent versions!")
+        
 # 6. Raw Data Search
 with st.expander("🔍 Search All Reviews"):
     search = st.text_input("Filter by keyword (e.g., 'price', 'map', 'driver')")
