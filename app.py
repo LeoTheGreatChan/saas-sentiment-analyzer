@@ -6,7 +6,7 @@ from transformers import pipeline
 # 1. Page Configuration
 st.set_page_config(page_title="Uber Product Insights", layout="wide")
 st.title("🚗 Uber App: Strategic Sentiment Dashboard")
-st.markdown("Click on the charts to filter and drill down into specific user feedback.")
+st.markdown("Analyze user feedback trends and drill down into specific app versions.")
 
 # 2. AI Model Loading (Cached)
 @st.cache_resource
@@ -19,6 +19,7 @@ sentiment_pipeline = load_sentiment_model()
 @st.cache_data
 def get_processed_data():
     try:
+        # Load the Uber Dataset
         df = pd.read_csv("uber_reviews.csv")
         
         # Standardize and Clean
@@ -31,6 +32,7 @@ def get_processed_data():
         df = df.sort_values('Date', ascending=False).head(200)
 
         def analyze_text(text):
+            # Transformers have a 512 character limit
             result = sentiment_pipeline(str(text)[:512])[0]
             score = result['score'] if result['label'] == 'POSITIVE' else -result['score']
             return pd.Series([score, result['label'].capitalize()])
@@ -38,7 +40,7 @@ def get_processed_data():
         df[['Score', 'Sentiment']] = df['Review'].apply(analyze_text)
         return df
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error processing data: {e}")
         return pd.DataFrame()
 
 with st.spinner("AI is analyzing 200 reviews..."):
@@ -54,7 +56,6 @@ m4.metric("High Engagement", len(df[df['Likes'] > 2]))
 st.divider()
 
 # 5. Interactive Visualizations
-# We initialize a variable to store clicks
 selected_version = None
 
 tab1, tab2 = st.tabs(["📊 Market Health", "⚠️ Critical Alerts"])
@@ -67,21 +68,4 @@ with tab1:
         st.caption("💡 Click a bar to filter the table below")
         v_data = df.groupby('Version')['Score'].mean().reset_index().sort_values('Version')
         
-        fig_bar = px.bar(v_data, x='Version', y='Score', color='Score', 
-                         color_continuous_scale='RdYlGn', custom_data=['Version'])
-        fig_bar.update_layout(xaxis_tickangle=-45)
-        
-        # Enable selection
-        event_bar = st.plotly_chart(fig_bar, use_container_width=True, on_select="rerun")
-        
-        if event_bar and "selection" in event_bar and event_bar["selection"]["points"]:
-            selected_version = event_bar["selection"]["points"][0]["custom_data"][0]
-
-    with right:
-        st.subheader("Time-Based Sentiment")
-        df['Day'] = df['Date'].dt.date
-        trend_df = df.groupby('Day')['Score'].mean().reset_index()
-
-        if len(trend_df) > 1:
-            fig_trend = px.line(trend_df, x='Day', y='Score', markers=True)
-        else
+        fig_bar = px.bar(v_data, x='Version', y='Score', color
