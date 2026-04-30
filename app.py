@@ -42,16 +42,27 @@ with st.spinner("AI is analyzing 200 reviews..."):
     df = get_processed_data()
 
 if not df.empty:
-    # 4. Sidebar Drill-Down
-    st.sidebar.header("Filter Analytics")
-    versions = ["All Versions"] + sorted(df['Version'].unique().tolist())
-    selected_version = st.sidebar.selectbox("Filter Explorer by Version", versions)
-
-    # 5. Dynamic Filtering for the Explorer
-    if selected_version != "All Versions":
-        explorer_df = df[df['Version'] == selected_version]
-    else:
-        explorer_df = df
+    # 4. Sidebar Drill-Down with Smart Sorting
+    if not df.empty:
+        st.sidebar.header("Filter Analytics")
+        
+        # Get unique versions and sort them in descending order (latest first)
+        # This handles strings like '4.34' vs '4.4' correctly
+        raw_versions = df['Version'].unique().tolist()
+        sorted_versions = sorted(raw_versions, key=lambda x: str(x), reverse=True)
+        
+        version_options = ["All Versions"] + sorted_versions
+        
+        selected_version = st.sidebar.selectbox(
+            "Select App Version (Latest First)", 
+            version_options
+        )
+    
+        # 5. Dynamic Filtering for the Explorer
+        if selected_version != "All Versions":
+            explorer_df = df[df['Version'] == selected_version]
+        else:
+            explorer_df = df
 
     # 6. Top Metrics
     m1, m2, m3, m4 = st.columns(4)
