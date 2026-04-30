@@ -72,11 +72,33 @@ with tab1:
         st.plotly_chart(fig_bar, use_container_width=True)
         
     with right:
-        st.subheader("Daily Sentiment Trend")
-        # Resampling to see if specific days had "outages" or issues
-        trend_df = df.set_index('Date').resample('D')['Score'].mean().reset_index()
-        fig_line = px.line(trend_df, x='Date', y='Score', title="Sentiment over Time")
-        st.plotly_chart(fig_line, use_container_width=True)
+        st.subheader("Sentiment Trend Over Time")
+        
+        # 1. Ensure Date is the Index for resampling
+        trend_data = df.copy().set_index('Date')
+        
+        # 2. Smart Resampling: 
+        # If the reviews span multiple days, use 'D' (Daily)
+        # If they are all from today, use 'H' (Hourly)
+        days_span = (trend_data.index.max() - trend_data.index.min()).days
+        freq = 'D' if days_span > 1 else 'H'
+        
+        # 3. Aggregate and Reset Index for Plotly
+        trend_df = trend_data.resample(freq)['Score'].mean().reset_index()
+        
+        # 4. Handle missing periods (empty hours/days) to keep the line continuous
+        trend_df = trend_df.dropna(subset=['Score'])
+    
+        if not trend_df.empty:
+            fig_line = px.line(trend_df, x='Date', y='Score', 
+                              title=f"Sentiment Trend ({'Daily' if freq=='D' else 'Hourly'})",
+                              markers=True,
+                              color_discrete_sequence=['#3498db'])
+            # Add a horizontal line at 0 for "Neutral"
+            fig_line.add_hline(y=0, line_dash="dash", line_color="gray")
+            st.plotly_chart(fig_line, use_container_width=True)
+        else:
+            st.info("Not enough date variety in this sample to show a trend line.")
 
 with tab2:
     st.subheader("High-Priority Customer Pain Points")
