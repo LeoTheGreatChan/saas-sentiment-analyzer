@@ -6,28 +6,25 @@ import altair as alt
 # Set page config
 st.set_page_config(page_title="Uber Insights", layout="wide")
 
-# --- 1. MOCK DATA GENERATION (To match your live dashboard structure) ---
+# --- 1. REAL DATA LOADING ---
 @st.cache_data
 def load_data():
-    np.random.seed(42)
-    versions = ["4.451.10003", "4.526.10000", "4.527.10000", "4.528.10000", 
-                "4.532.10001", "4.537.10000", "4.541.10003", "4.547.10001", 
-                "4.550.10001", "4.552.10000", "4.554.10001", "4.555.10003", 
-                "4.556.10005", "Unknown"]
+    # 1. Change 'your_original_file.csv' to the exact name of your dataset file
+    df = pd.read_csv("your_original_file.csv") 
     
-    data = {
-        "review_id": [f"REV_{i}" for i in range(1, 201)],
-        "version": np.random.choice(versions, 200),
-        "sentiment_score": np.random.uniform(-1.0, 1.0, 200),
-        "hour": np.random.randint(0, 24, 200),
-        "likes": np.random.randint(0, 50, 200),
-        "review_text": [f"Sample review text details for context tracking ID {i}..." for i in range(1, 201)]
-    }
-    df = pd.DataFrame(data)
+    # 2. Automatically apply the metrics logic to your real data
+    # (Ensuring 'sentiment_score' maps correctly to labels)
+    if 'sentiment_label' not in df.columns:
+        df['sentiment_label'] = df['sentiment_score'].apply(
+            lambda x: 'Negative' if x < -0.1 else ('Positive' if x > 0.1 else 'Neutral')
+        )
     
-    # Assign labels based on score matching the live setup
-    df['sentiment_label'] = df['sentiment_score'].apply(lambda x: 'Negative' if x < -0.1 else ('Positive' if x > 0.1 else 'Neutral'))
-    df['priority'] = np.where((df['sentiment_label'] == 'Negative') | (df['likes'] > 30), 'High', 'Normal')
+    # 3. Dynamically tag 'High' priority based on your real negative scores or high likes
+    if 'priority' not in df.columns:
+        # Adjust 'likes' to match your exact column name if it's called 'thumbs_up' or 'upvotes'
+        likes_col = 'likes' if 'likes' in df.columns else df.columns[0] 
+        df['priority'] = np.where((df['sentiment_label'] == 'Negative') | (df[likes_col] > 30), 'High', 'Normal')
+        
     return df
 
 df = load_data()
