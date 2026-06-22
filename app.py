@@ -78,7 +78,8 @@ chart_col1, chart_col2 = st.columns(2)
 
 with chart_col1:
     st.write("### Sentiment by Version")
-    version_chart = alt.Chart(df_filtered).mark_box().encode(
+    # Changed .mark_box() to .mark_boxplot()
+    version_chart = alt.Chart(df_filtered).mark_boxplot().encode(
         x=alt.X('sentiment_score:Q', title='Score'),
         y=alt.Y('version:N', title='App Version', sort='-x'),
         color=alt.Color('sentiment_label:N', legend=None)
