@@ -10,7 +10,7 @@ st.set_page_config(page_title="Uber Insights", layout="wide")
 @st.cache_data
 def load_data():
     # 1. Read your file (Make sure this filename matches your repository file exactly)
-    df = pd.read_csv("your_original_file.csv") 
+    df = pd.read_csv("uber_reviews.csv") 
     
     # 2. Defensive Column Mapping: Protect against case sensitivity or different names
     col_mapping = {
