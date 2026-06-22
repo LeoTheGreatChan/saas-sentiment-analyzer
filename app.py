@@ -9,21 +9,41 @@ st.set_page_config(page_title="Uber Insights", layout="wide")
 # --- 1. REAL DATA LOADING ---
 @st.cache_data
 def load_data():
-    # 1. Change 'your_original_file.csv' to the exact name of your dataset file
+    # 1. Read your file (Make sure this filename matches your repository file exactly)
     df = pd.read_csv("your_original_file.csv") 
     
-    # 2. Automatically apply the metrics logic to your real data
-    # (Ensuring 'sentiment_score' maps correctly to labels)
+    # 2. Defensive Column Mapping: Protect against case sensitivity or different names
+    col_mapping = {
+        'review_id': ['review_id', 'id', 'Review ID', 'Id'],
+        'version': ['version', 'app_version', 'Version', 'App Version'],
+        'sentiment_score': ['sentiment_score', 'score', 'Sentiment Score', 'Score'],
+        'review_text': ['review_text', 'text', 'content', 'Review Text', 'Review', 'content'],
+        'hour': ['hour', 'time', 'Hour', 'Time'],
+        'likes': ['likes', 'thumbs_up', 'upvotes', 'Likes']
+    }
+    
+    # Loop through and standardize headers if they match variations
+    for standard_name, variations in col_mapping.items():
+        if standard_name not in df.columns:
+            for variant in variations:
+                if variant in df.columns:
+                    df = df.rename(columns={variant: standard_name})
+                    break
+            else:
+                # If a completely missing field, create a dummy fallback to prevent errors
+                if standard_name == 'hour': df['hour'] = 12
+                elif standard_name == 'likes': df['likes'] = 0
+                elif standard_name == 'review_id': df['review_id'] = df.index.map(lambda x: f"REV_{x}")
+                else: df[standard_name] = "Data Missing"
+                
+    # 3. Safely apply sentiment labels and priority rankings
     if 'sentiment_label' not in df.columns:
         df['sentiment_label'] = df['sentiment_score'].apply(
-            lambda x: 'Negative' if x < -0.1 else ('Positive' if x > 0.1 else 'Neutral')
+            lambda x: 'Negative' if float(x) < -0.1 else ('Positive' if float(x) > 0.1 else 'Neutral')
         )
     
-    # 3. Dynamically tag 'High' priority based on your real negative scores or high likes
     if 'priority' not in df.columns:
-        # Adjust 'likes' to match your exact column name if it's called 'thumbs_up' or 'upvotes'
-        likes_col = 'likes' if 'likes' in df.columns else df.columns[0] 
-        df['priority'] = np.where((df['sentiment_label'] == 'Negative') | (df[likes_col] > 30), 'High', 'Normal')
+        df['priority'] = np.where((df['sentiment_label'] == 'Negative') | (df['likes'] > 30), 'High', 'Normal')
         
     return df
 
