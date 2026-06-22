@@ -1,107 +1,113 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
+import plotly.express as px
+from transformers import pipeline
 
-# 1. Load the data directly from the local folder directory (Bypasses HTTP/Network requests)
-@st.cache_data
-def load_data():
-    df = pd.read_csv("uber_reviews.csv")
-    df['sentiment_score'] = pd.to_numeric(df['sentiment_score'], errors='coerce')
-    df['hour'] = pd.to_numeric(df['hour'], errors='coerce')
-    df['likes'] = pd.to_numeric(df['likes'], errors='coerce')
-    return df
-
-df = load_data()
-
-# 2. Sidebar configuration matching your original list order
-st.sidebar.header("Filter Analytics")
-all_versions = ["All Versions"] + sorted(df['version'].dropna().unique().tolist(), reverse=True)
-selected_version = st.sidebar.selectbox("Select App Version (Latest First)", all_versions)
-
-# Create the filtered DataFrame matrix reactively
-if selected_version == "All Versions":
-    df_filtered = df
-else:
-    df_filtered = df[df['version'] == selected_version]
-
-# 3. Main Dashboard Header
+# 1. Page Configuration
+st.set_page_config(page_title="Uber Insights", layout="wide")
 st.title("🚗 Uber Product Insights Dashboard")
-st.markdown("---")
 
-# 4. FIXED DYNAMIC METRICS (Recalculating using df_filtered)
-total_sample = len(df_filtered)
+# 2. AI Model Loading (Cached)
+@st.cache_resource
+def load_sentiment_model():
+    return pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
 
-if total_sample > 0:
-    avg_sentiment = df_filtered['sentiment_score'].mean()
-    critical_alerts = len(df_filtered[(df_filtered['priority'] == 'High') & (df_filtered['sentiment_label'] == 'Negative')])
-else:
-    avg_sentiment = 0.0
-    critical_alerts = 0
+sentiment_pipeline = load_sentiment_model()
 
-# Render the metric blocks 
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric(label="Total Sample", value=f"{total_sample:,}")
-with col2:
-    st.metric(label="Avg Sentiment", value=f"{avg_sentiment:.2f}")
-with col3:
-    st.metric(label="Critical Alerts", value=critical_alerts)
-with col4:
-    st.metric(label="Active Version", value="Multiple" if selected_version == "All Versions" else selected_version)
+# 3. Data Loading & AI Processing
+@st.cache_data
+def get_processed_data():
+    try:
+        df = pd.read_csv("uber_reviews.csv")
+        df = df.rename(columns={'content': 'Review', 'appVersion': 'Version', 'at': 'Date', 'thumbsUpCount': 'Likes'})
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        df = df.dropna(subset=['Date'])
+        df['Version'] = df['Version'].fillna('Unknown')
+        
+        # Increased to 200 reviews for better "Critical Alert" depth
+        df = df.sort_values('Date', ascending=False).head(200)
 
-st.markdown("---")
+        def analyze_text(text):
+            result = sentiment_pipeline(str(text)[:512])[0]
+            score = result['score'] if result['label'] == 'POSITIVE' else -result['score']
+            return pd.Series([score, result['label'].capitalize()])
 
-# 5. Charts and Review Table 
-chart_col1, chart_col2 = st.columns(2)
+        df[['Score', 'Sentiment']] = df['Review'].apply(analyze_text)
+        return df
+    except Exception as e:
+        st.error(f"Data Loading Error: {e}")
+        return pd.DataFrame()
 
-with chart_col1:
-    st.subheader("📊 Performance Trends")
-    st.write("### Sentiment by Version")
+with st.spinner("AI is analyzing 200 reviews..."):
+    df = get_processed_data()
+
+if not df.empty:
+    # 4. Sidebar Drill-Down with Smart Sorting
+    if not df.empty:
+        st.sidebar.header("Filter Analytics")
+        
+        # Get unique versions and sort them in descending order (latest first)
+        # This handles strings like '4.34' vs '4.4' correctly
+        raw_versions = df['Version'].unique().tolist()
+        sorted_versions = sorted(raw_versions, key=lambda x: str(x), reverse=True)
+        
+        version_options = ["All Versions"] + sorted_versions
+        
+        selected_version = st.sidebar.selectbox(
+            "Select App Version (Latest First)", 
+            version_options
+        )
     
-    version_chart = alt.Chart(df_filtered).mark_boxplot().encode(
-        x=alt.X('sentiment_score:Q', title='Score'),
-        y=alt.Y('version:N', title='App Version', sort='-x'),
-        color=alt.Color('sentiment_label:N', legend=None)
-    ).properties(height=300)
-    st.altair_chart(version_chart, use_container_width=True)
+        # 5. Dynamic Filtering for the Explorer
+        if selected_version != "All Versions":
+            explorer_df = df[df['Version'] == selected_version]
+        else:
+            explorer_df = df
 
-with chart_col2:
-    st.subheader("⚠️ Critical Alerts")
-    st.write("### High-Priority Customer Issues")
-    st.caption("Showing reviews with very negative sentiment or high community agreement (Likes).")
-    
-    explorer_df = df_filtered[df_filtered['priority'] == 'High'].sort_values(by='sentiment_score')
-    
-    st.write(f"📋 **Review Explorer:** {selected_version}")
-    st.dataframe(
-        explorer_df[['review_id', 'version', 'sentiment_label', 'sentiment_score', 'likes', 'review']], 
-        use_container_width=True,
-        hide_index=True
-    )
+    # 6. Top Metrics
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Sample", len(df))
+    m2.metric("Avg Sentiment", f"{df['Score'].mean():.2f}")
+    m3.metric("Critical Alerts", len(df[(df['Score'] < -0.6) | (df['Likes'] > 5)]))
+    m4.metric("Active Version", selected_version if selected_version != "All Versions" else "Multiple")
 
-st.markdown("---")
+    st.divider()
 
-# 6. Time Chart & Export Layout
-bottom_col1, bottom_col2 = st.columns([2, 1])
+    # 7. Layout with Tabs
+    tab1, tab2 = st.tabs(["📊 Performance Trends", "⚠️ Critical Alerts"])
 
-with bottom_col1:
-    st.write("### 🕒 Time-Based Trend")
-    time_chart = alt.Chart(df_filtered).mark_circle(size=60).encode(
-        x=alt.X('hour:Q', title='Hour (24h)'),
-        y=alt.Y('sentiment_score:Q', title='Score'),
-        color='sentiment_label:N',
-        tooltip=['review_id', 'version', 'sentiment_score']
-    ).properties(height=300)
-    st.altair_chart(time_chart, use_container_width=True)
+    with tab1:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Sentiment by Version")
+            v_data = df.groupby('Version')['Score'].mean().reset_index()
+            fig_bar = px.bar(v_data, x='Version', y='Score', color='Score', 
+                             color_continuous_scale='RdYlGn', title="App Health by Release")
+            st.plotly_chart(fig_bar, use_container_width=True)
 
-with bottom_col2:
-    st.write("### 📥 Download Options")
-    st.write("") # Spacer padding
-    csv = df_filtered.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download Active Dataset (CSV)",
-        data=csv,
-        file_name=f"uber_insights_{selected_version.lower().replace(' ', '_')}.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
+        with col2:
+            st.subheader("Time-Based Trend")
+            df['Day'] = df['Date'].dt.date
+            trend = df.groupby('Day')['Score'].mean().reset_index()
+            if len(trend) > 1:
+                fig_trend = px.line(trend, x='Day', y='Score', markers=True)
+            else:
+                hourly = df.groupby(df['Date'].dt.hour)['Score'].mean().reset_index()
+                fig_trend = px.bar(hourly, x='Date', y='Score', labels={'Date': 'Hour (24h)'}, color='Score')
+            st.plotly_chart(fig_trend, use_container_width=True)
+
+    with tab2:
+        st.subheader("High-Priority Customer Issues")
+        st.info("Showing reviews with very negative sentiment or high community agreement (Likes).")
+        # Logic: Score below -0.6 (Very Angry) OR any negative review with Likes
+        crit_df = df[(df['Score'] < -0.6) | ((df['Sentiment'] == 'Negative') & (df['Likes'] > 0))]
+        st.dataframe(crit_df.sort_values(by=['Likes', 'Score'], ascending=[False, True]), use_container_width=True)
+
+    # 8. Detailed Review Explorer
+    st.divider()
+    st.subheader(f"📋 Review Explorer: {selected_version}")
+    st.dataframe(explorer_df[['Date', 'Version', 'Review', 'Sentiment', 'Score', 'Likes']], use_container_width=True)
+
+    # 9. Download
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Download Full Dataset", data=csv, file_name='uber_sentiment_export.csv')
