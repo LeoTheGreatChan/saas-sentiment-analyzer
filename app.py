@@ -23,7 +23,7 @@ def get_processed_data():
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df = df.dropna(subset=['Date'])
         df['Version'] = df['Version'].fillna('Unknown')
-        
+
         # Increased to 200 reviews for better "Critical Alert" depth
         df = df.sort_values('Date', ascending=False).head(200)
 
@@ -42,38 +42,47 @@ with st.spinner("AI is analyzing 200 reviews..."):
     df = get_processed_data()
 
 if not df.empty:
-    # 4. Sidebar Drill-Down with Smart Sorting
-    if not df.empty:
-        st.sidebar.header("Filter Analytics")
-        
-        # Get unique versions and sort them in descending order (latest first)
-        # This handles strings like '4.34' vs '4.4' correctly
-        raw_versions = df['Version'].unique().tolist()
-        sorted_versions = sorted(raw_versions, key=lambda x: str(x), reverse=True)
-        
-        version_options = ["All Versions"] + sorted_versions
-        
-        selected_version = st.sidebar.selectbox(
-            "Select App Version (Latest First)", 
-            version_options
-        )
-    
-        # 5. Dynamic Filtering for the Explorer
-        if selected_version != "All Versions":
-            explorer_df = df[df['Version'] == selected_version]
-        else:
-            explorer_df = df
+    # 4. Sidebar — version filter with correct semantic version sorting
+    st.sidebar.header("Filter Analytics")
 
-    # 6. Top Metrics
+    def version_sort_key(v):
+        """Parse version strings as integer tuples so 4.10 sorts after 4.9."""
+        try:
+            return tuple(int(x) for x in str(v).split('.'))
+        except ValueError:
+            return (0,)
+
+    raw_versions = df['Version'].unique().tolist()
+    sorted_versions = sorted(raw_versions, key=version_sort_key, reverse=True)
+
+    version_options = ["All Versions"] + sorted_versions
+
+    selected_version = st.sidebar.selectbox(
+        "Select App Version (Latest First)",
+        version_options
+    )
+
+    # 5. Filter dataset — used for metrics AND the explorer
+    if selected_version != "All Versions":
+        filtered_df = df[df['Version'] == selected_version]
+    else:
+        filtered_df = df
+
+    # 6. Top Metrics — all driven by the filtered dataset
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Sample", len(df))
-    m2.metric("Avg Sentiment", f"{df['Score'].mean():.2f}")
-    m3.metric("Critical Alerts", len(df[(df['Score'] < -0.6) | (df['Likes'] > 5)]))
+    m1.metric("Total Sample", len(filtered_df))
+    m2.metric("Avg Sentiment", f"{filtered_df['Score'].mean():.2f}" if not filtered_df.empty else "—")
+    m3.metric(
+        "Critical Alerts",
+        len(filtered_df[(filtered_df['Score'] < -0.6) | (filtered_df['Likes'] > 5)])
+        if not filtered_df.empty else 0
+    )
     m4.metric("Active Version", selected_version if selected_version != "All Versions" else "Multiple")
 
     st.divider()
 
-    # 7. Layout with Tabs
+    # 7. Layout with Tabs — charts always use the full dataset for context,
+    #    but the critical alerts tab respects the version filter
     tab1, tab2 = st.tabs(["📊 Performance Trends", "⚠️ Critical Alerts"])
 
     with tab1:
@@ -81,7 +90,7 @@ if not df.empty:
         with col1:
             st.subheader("Sentiment by Version")
             v_data = df.groupby('Version')['Score'].mean().reset_index()
-            fig_bar = px.bar(v_data, x='Version', y='Score', color='Score', 
+            fig_bar = px.bar(v_data, x='Version', y='Score', color='Score',
                              color_continuous_scale='RdYlGn', title="App Health by Release")
             st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -99,15 +108,23 @@ if not df.empty:
     with tab2:
         st.subheader("High-Priority Customer Issues")
         st.info("Showing reviews with very negative sentiment or high community agreement (Likes).")
-        # Logic: Score below -0.6 (Very Angry) OR any negative review with Likes
-        crit_df = df[(df['Score'] < -0.6) | ((df['Sentiment'] == 'Negative') & (df['Likes'] > 0))]
-        st.dataframe(crit_df.sort_values(by=['Likes', 'Score'], ascending=[False, True]), use_container_width=True)
+        crit_df = filtered_df[
+            (filtered_df['Score'] < -0.6) |
+            ((filtered_df['Sentiment'] == 'Negative') & (filtered_df['Likes'] > 0))
+        ]
+        st.dataframe(
+            crit_df.sort_values(by=['Likes', 'Score'], ascending=[False, True]),
+            use_container_width=True
+        )
 
     # 8. Detailed Review Explorer
     st.divider()
     st.subheader(f"📋 Review Explorer: {selected_version}")
-    st.dataframe(explorer_df[['Date', 'Version', 'Review', 'Sentiment', 'Score', 'Likes']], use_container_width=True)
+    st.dataframe(
+        filtered_df[['Date', 'Version', 'Review', 'Sentiment', 'Score', 'Likes']],
+        use_container_width=True
+    )
 
-    # 9. Download
-    csv = df.to_csv(index=False).encode('utf-8')
+    # 9. Download — exports the filtered dataset
+    csv = filtered_df.to_csv(index=False).encode('utf-8')
     st.download_button("📥 Download Full Dataset", data=csv, file_name='uber_sentiment_export.csv')
