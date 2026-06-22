@@ -9,7 +9,7 @@ st.set_page_config(page_title="Uber Insights", layout="wide")
 # --- 1. REAL DATA LOADING ---
 @st.cache_data
 def load_data():
-    # 1. Read your file (Make sure this filename matches your repository file exactly)
+    # 1. Read your genuine data file from the repository
     df = pd.read_csv("uber_reviews.csv") 
     
     # 2. Defensive Column Mapping: Protect against case sensitivity or different names
@@ -17,7 +17,7 @@ def load_data():
         'review_id': ['review_id', 'id', 'Review ID', 'Id'],
         'version': ['version', 'app_version', 'Version', 'App Version'],
         'sentiment_score': ['sentiment_score', 'score', 'Sentiment Score', 'Score'],
-        'review_text': ['review_text', 'text', 'content', 'Review Text', 'Review', 'content'],
+        'review_text': ['review_text', 'text', 'content', 'Review Text', 'Review'],
         'hour': ['hour', 'time', 'Hour', 'Time'],
         'likes': ['likes', 'thumbs_up', 'upvotes', 'Likes']
     }
