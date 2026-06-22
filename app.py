@@ -71,37 +71,54 @@ with col4:
 
 st.markdown("---")
 
-# --- 5. CHARTS & VISUALIZATIONS ---
-st.subheader("📊 Performance Trends")
+# --- 5. CHARTS & TABLES SIDE-BY-SIDE ---
+main_col1, main_col2 = st.columns([1, 1.2]) # Gives the table slightly more room
 
-chart_col1, chart_col2 = st.columns(2)
-
-with chart_col1:
-    st.write("### Sentiment by Version")
-    # Changed .mark_box() to .mark_boxplot()
+with main_col1:
+    st.write("### 📊 Sentiment by Version")
     version_chart = alt.Chart(df_filtered).mark_boxplot().encode(
         x=alt.X('sentiment_score:Q', title='Score'),
         y=alt.Y('version:N', title='App Version', sort='-x'),
         color=alt.Color('sentiment_label:N', legend=None)
-    ).properties(height=300)
+    ).properties(height=350)
     st.altair_chart(version_chart, use_container_width=True)
 
-with chart_col2:
-    st.write("### Time-Based Trend")
+with main_col2:
+    st.write("### ⚠️ Critical Alerts (High-Priority)")
+    
+    # Filter explorer view data dynamically based on selection
+    explorer_df = df_filtered[df_filtered['priority'] == 'High'].sort_values(by='sentiment_score')
+    
+    st.dataframe(
+        explorer_df[['review_id', 'version', 'sentiment_label', 'sentiment_score', 'likes', 'review_text']], 
+        use_container_width=True,
+        hide_index=True,
+        height=350 # Matches the chart height perfectly
+    )
+
+st.markdown("---")
+
+# --- 6. TIME TREND & DOWNLOAD (Bottom Row) ---
+bottom_col1, bottom_col2 = st.columns([2, 1])
+
+with bottom_col1:
+    st.write("### 🕒 Time-Based Trend")
     time_chart = alt.Chart(df_filtered).mark_circle(size=60).encode(
         x=alt.X('hour:Q', title='Hour (24h)'),
         y=alt.Y('sentiment_score:Q', title='Score'),
         color='sentiment_label:N',
         tooltip=['review_id', 'version', 'sentiment_score']
-    ).properties(height=300)
+    ).properties(height=250)
     st.altair_chart(time_chart, use_container_width=True)
 
-st.markdown("---")
-
-# --- 6. REVIEW EXPLORER TABLE ---
-st.subheader("⚠️ Critical Alerts")
-st.write("### High-Priority Customer Issues")
-st.caption("Showing reviews with very negative sentiment or high community agreement (Likes).")
-
-# Filter explorer view data based on top-level interactive selections
-explorer_df = df_filtered[df_filtered['priority'] == 'High'].sort_values
+with bottom_col2:
+    st.write("### 📥 Export Data")
+    st.write("") # Padding
+    csv = df_filtered.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Download Active Dataset (CSV)",
+        data=csv,
+        file_name=f"uber_insights_{selected_version.lower().replace(' ', '_')}.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
