@@ -115,11 +115,21 @@ if not df.empty:
 
     st.divider()
 
-    # 7. Layout with Tabs - charts always use the full dataset for context,
-    #    but the critical alerts tab respects the version filter
-    tab1, tab2 = st.tabs(["📊 Performance Trends", "⚠️ Critical Alerts"])
+    # 7. Main view selector - charts always use the full dataset for context,
+    #    but the critical alerts view respects the version filter
+    st.subheader("Explore Review Insights")
+    selected_view = st.segmented_control(
+        "Choose dashboard view",
+        options=["Performance Trends", "Critical Alerts"],
+        selection_mode="single",
+        default="Performance Trends",
+        label_visibility="collapsed",
+        width="stretch",
+    )
+    st.caption("Use the selector above to switch between trend charts and high-priority customer issues.")
 
-    with tab1:
+    if selected_view == "Performance Trends":
+
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Sentiment by Version")
@@ -151,7 +161,7 @@ if not df.empty:
                 )
             st.plotly_chart(fig_trend, use_container_width=True)
 
-    with tab2:
+    else:
         st.subheader("High-Priority Customer Issues")
         st.info("Showing reviews with very negative sentiment or high community agreement (Likes).")
         st.dataframe(
