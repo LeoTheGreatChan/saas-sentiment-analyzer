@@ -12,6 +12,7 @@ type AnalysisResult = {
   confidence: number
   summary: string
   themes: string[]
+  engine?: "ai" | "local"
 }
 
 const SAMPLES = [
@@ -143,15 +144,16 @@ export function SentimentAnalyzer() {
 
               <p className="text-sm leading-relaxed text-foreground">{result.summary}</p>
 
-              {result.themes?.length > 0 && (
-                <div className="mt-auto flex flex-wrap gap-1.5">
-                  {result.themes.map((t, i) => (
-                    <span key={i} className="rounded-md border border-border bg-card px-2 py-0.5 text-xs text-muted-foreground">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <div className="mt-auto flex flex-wrap items-center gap-1.5">
+                {result.themes?.map((t, i) => (
+                  <span key={i} className="rounded-md border border-border bg-card px-2 py-0.5 text-xs text-muted-foreground">
+                    {t}
+                  </span>
+                ))}
+                <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground/60">
+                  {result.engine === "local" ? "Lexicon engine" : "AI engine"}
+                </span>
+              </div>
             </div>
           )}
         </div>
