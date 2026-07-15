@@ -1,14 +1,13 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from transformers import pipeline
+import gspread
+import requests
+from google.oauth2.credentials import Credentials
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-DATA_PATH        = "uber_reviews.csv"
-MODEL_NAME       = "distilbert-base-uncased-finetuned-sst-2-english"
-SAMPLE_SIZE      = 200
-ALL_VERSIONS     = "All Versions"
-REQUIRED_COLUMNS = {"content", "reviewCreatedVersion", "at", "thumbsUpCount"}
+SHEET_NAME   = "Uber Sentiment Pipeline"
+ALL_VERSIONS = "All Versions"
 
 SAMPLE_REVIEWS = [
     "The driver was fantastic, arrived in 2 minutes and the car was spotless.",
@@ -301,14 +300,7 @@ footer { visibility: hidden !important; }
 """, unsafe_allow_html=True)
 
 
-# ── Backend (preserved exactly) ───────────────────────────────────────────────
-@st.cache_resource
-def load_sentiment_model():
-    return pipeline("sentiment-analysis", model=MODEL_NAME)
-
-sentiment_pipeline = load_sentiment_model()
-
-
+# ── Backend ───────────────────────────────────────────────────────────────────
 def version_sort_key(version):
     try:
         return tuple(int(p) for p in str(version).split("."))
@@ -316,50 +308,51 @@ def version_sort_key(version):
         return (0,)
 
 
-def normalize_reviews(df):
-    missing = REQUIRED_COLUMNS - set(df.columns)
-    if missing:
-        raise ValueError(f"CSV is missing required columns: {', '.join(sorted(missing))}")
-    df = df.rename(columns={
-        "content": "Review", "reviewCreatedVersion": "Version",
-        "at": "Date", "thumbsUpCount": "Likes",
-    })
-    df["Date"]  = pd.to_datetime(df["Date"], errors="coerce")
-    df          = df.dropna(subset=["Date"])
-    df["Version"] = df["Version"].fillna("Unknown")
-    df["Review"]  = df["Review"].fillna("")
-    df["Likes"]   = pd.to_numeric(df["Likes"], errors="coerce").fillna(0).astype(int)
-    return df.sort_values("Date", ascending=False).head(SAMPLE_SIZE)
-
-
-def score_reviews(df):
-    def analyze_text(text):
-        result = sentiment_pipeline(str(text)[:512])[0]
-        score  = result["score"] if result["label"] == "POSITIVE" else -result["score"]
-        return pd.Series([score, result["label"].capitalize()])
-    df = df.copy()
-    df[["Score", "Sentiment"]] = df["Review"].apply(analyze_text)
-    return df
-
-
 def get_critical_alerts(df):
     return df[(df["Score"] < -0.6) | ((df["Sentiment"] == "Negative") & (df["Likes"] > 0))]
 
 
-@st.cache_data
+@st.cache_data(ttl=300)
 def get_processed_data():
     try:
-        raw = pd.read_csv(DATA_PATH)
-        return score_reviews(normalize_reviews(raw))
+        # Get fresh access token directly from Google
+        response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id":     st.secrets["gcp"]["client_id"],
+                "client_secret": st.secrets["gcp"]["client_secret"],
+                "refresh_token": st.secrets["gcp"]["refresh_token"],
+                "grant_type":    "refresh_token",
+            },
+            timeout=10,
+        )
+        access_token = response.json()["access_token"]
+
+        # Connect to Google Sheets and fetch data
+        creds  = Credentials(token=access_token)
+        client = gspread.authorize(creds)
+        sheet  = client.open(SHEET_NAME).sheet1
+        data   = sheet.get_all_records()
+
+        if not data:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(data)
+        df["Date"]      = pd.to_datetime(df["Date"], errors="coerce")
+        df["Score"]     = pd.to_numeric(df["Score"], errors="coerce")
+        df["Likes"]     = pd.to_numeric(df["Likes"], errors="coerce").fillna(0).astype(int)
+        df["Review"]    = df["Review"].fillna("")
+        df["Version"]   = df["Version"].fillna("Unknown")
+        df["Sentiment"] = df["Sentiment"].fillna("")
+        df = df.dropna(subset=["Date"])
+        return df.sort_values("Date", ascending=False)
+
     except Exception as e:
-        st.error(f"Data Loading Error: {e}")
+        st.error(f"Google Sheets Error: {e}")
         return pd.DataFrame()
 
 
-def score_single(text: str):
-    result = sentiment_pipeline(str(text)[:512])[0]
-    score  = result["score"] if result["label"] == "POSITIVE" else -result["score"]
-    return score, result["label"].capitalize()
+
 
 
 # ── Plotly helpers — explicit kwargs, no dict spread ─────────────────────────
@@ -391,7 +384,8 @@ def apply_dark_theme(fig, height=300):
 # ── Load data ─────────────────────────────────────────────────────────────────
 # Load without spinner wrapper — spinner can defer execution and leave
 # version_options empty on first render, causing selectbox to silently hide.
-df = get_processed_data()
+with st.spinner("Loading reviews from Google Sheets…"):
+    df = get_processed_data()
 
 # Build version list immediately after load, before any widgets render
 raw_versions    = df["Version"].unique().tolist() if not df.empty else []
@@ -426,7 +420,7 @@ with st.sidebar:
 
 # ── Guard ─────────────────────────────────────────────────────────────────────
 if df.empty:
-    st.error("No data — ensure `uber_reviews.csv` is in the working directory.")
+    st.error("No data — check your Google Sheets connection and ensure the sheet has data.")
     st.stop()
 
 
