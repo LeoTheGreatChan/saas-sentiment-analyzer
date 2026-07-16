@@ -30,7 +30,7 @@ From the latest run:
 
 ## Pipeline Architecture
 
-![n8n pipeline — all nodes green after a successful run](n8n_pipeline_overview_png.jpg)
+![n8n pipeline — all nodes green after a successful run](./assets/n8n_pipeline_overview_png.jpg)
 
 The pipeline runs as an n8n workflow with six stages, processing 200 reviews per run with all item counts visible between nodes: 1 → 200 → 200 → 68 (critical) + 132 (normal) → 200 written to Sheets.
 
@@ -44,7 +44,7 @@ A JavaScript Code node fetches the latest Uber reviews from Google Play using `g
 An HTTP Request node POSTs each review to a local Flask endpoint (`POST: http://127.0.0.1:5000/score`) wrapping a DistilBERT model fine-tuned on SST-2. Each review returns a sentiment label (Positive/Negative) and a confidence score from −1.0 to +1.0. The scorer runs as a persistent service — the model loads once and stays warm across all 200 calls.
 
 **④ Triage — IF node with compound alert logic**  
-![IF node showing two conditions linked by OR](n8n_if_node_png.jpg)
+![IF node showing two conditions linked by OR](./assets/n8n_if_node_png.jpg)
 
 An IF node applies the alert threshold using two conditions linked by OR:
 - `{{ $json.score }} is less than -0.6` — very negative sentiment
@@ -56,7 +56,7 @@ From the latest run: **68 items to the true branch** (critical), **132 items to 
 A Gmail node sends an automated email for each of the 68 critical reviews, including full review text, version number, sentiment score, and timestamp. No manual monitoring required — critical feedback surfaces in the inbox automatically.
 
 **⑥ Write — Google Sheets (deduplicated)**  
-![Google Sheets node showing all 7 field mappings](n8n_sheets_node_png.jpg)
+![Google Sheets node showing all 7 field mappings](./assets/n8n_sheets_node_png.jpg)
 
 A Google Sheets node writes all 200 scored reviews using `Append or Update Row` with `ReviewId` as the deduplication key. Re-running the pipeline on consecutive days never produces duplicate rows — the operation is fully idempotent. Field mappings pull from two upstream nodes: review metadata from `google-play-scraper`, sentiment label and score from `HTTP Request for Sentiment Score`.
 
@@ -64,7 +64,7 @@ A Google Sheets node writes all 200 scored reviews using `Append or Update Row` 
 
 ## Live Dashboard
 
-![Product Insights Dashboard showing 379 reviews, +0.35 avg sentiment, 123 critical alerts](dashboard_overview_png.jpg)
+![Product Insights Dashboard showing 379 reviews, +0.35 avg sentiment, 123 critical alerts](./assets/dashboard_overview_png.jpg)
 
 A Streamlit dashboard reads live from Google Sheets via OAuth2, with a 5-minute cache TTL. No redeployment needed when new data arrives — run the n8n workflow and the dashboard updates automatically on the next page load.
 
@@ -78,7 +78,7 @@ A Streamlit dashboard reads live from Google Sheets via OAuth2, with a 5-minute 
 
 **Critical Alerts tab** surfaces the highest-priority reviews ranked by severity:
 
-![Critical Alerts tab showing 123 reviews with left red border styling](dashboard_alerts_png.jpg)
+![Critical Alerts tab showing 123 reviews with left red border styling](./assets/dashboard_alerts_png.jpg)
 
 123 reviews with very negative sentiment or high community agreement, each shown with score (colour-coded red), version, likes count, and full review text. The top alert — a French-language review about locked account and unresponsive support — scored −0.971 with 185 community likes, making it the highest-priority issue in the dataset.
 
