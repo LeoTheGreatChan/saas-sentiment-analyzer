@@ -527,24 +527,12 @@ with tab_trends:
     with col2:
         st.markdown('<div class="section-sub">Time-Based Trend · Average sentiment by hour of day</div>',
                     unsafe_allow_html=True)
-        trend_df = filtered_df.assign(Day=filtered_df["Date"].dt.date)
-        trend    = trend_df.groupby("Day")["Score"].mean().reset_index()
-
-        if len(trend) > 1:
-            fig_trend = go.Figure(go.Scatter(
-                x=trend["Day"], y=trend["Score"],
-                mode="lines+markers",
-                line=dict(color="#3b82f6", width=2),
-                marker=dict(size=5, color="#6366f1"),
-                fill="tozeroy",
-                fillcolor="rgba(99,102,241,0.08)",
-            ))
-        else:
-            hourly = filtered_df.groupby(filtered_df["Date"].dt.hour)["Score"].mean().reset_index()
-            fig_trend = go.Figure(go.Bar(
-                x=hourly["Date"], y=hourly["Score"],
-                marker_color="#3b82f6", marker_line_width=0,
-            ))
+        hourly = filtered_df.groupby(filtered_df["Date"].dt.hour)["Score"].mean().reset_index()
+        fig_trend = go.Figure(go.Bar(
+            x=hourly["Date"], y=hourly["Score"],
+            marker_color="#3b82f6", marker_line_width=0,
+        ))
+        fig_trend.update_xaxes(title_text="Hour of day", dtick=1)
 
         apply_dark_theme(fig_trend)
         st.plotly_chart(fig_trend, use_container_width=True)
