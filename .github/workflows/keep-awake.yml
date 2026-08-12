@@ -12,5 +12,7 @@ jobs:
     steps:
       - name: Ping app to prevent it from sleeping
         run: |
-          curl -sSL -o /dev/null -w "HTTP %{http_code}\n" \
+          curl -sSL -c cookies.txt -b cookies.txt \
+            -A "Mozilla/5.0 (compatible; KeepAwakeBot/1.0)" \
+            -o /dev/null -w "HTTP %{http_code}\n" \
             "https://saas-sentiment-analyzer.streamlit.app/"
