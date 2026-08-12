@@ -1,0 +1,16 @@
+name: Keep Streamlit app awake
+
+on:
+  schedule:
+    # Every 6 hours — well under Streamlit Community Cloud's idle-sleep window.
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping app to prevent it from sleeping
+        run: |
+          curl -sSL -o /dev/null -w "HTTP %{http_code}\n" \
+            "https://saas-sentiment-analyzer.streamlit.app/"
