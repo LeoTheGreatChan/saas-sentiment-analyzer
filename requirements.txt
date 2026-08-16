@@ -1,9 +1,9 @@
 streamlit==1.58.0
 pandas
 plotly
-gspread
-google-auth
-google-auth-oauthlib
+gspread==6.2.1
+google-auth==2.56.0
+google-auth-oauthlib==1.4.0
 requests
 flask
 transformers

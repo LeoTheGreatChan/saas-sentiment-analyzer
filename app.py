@@ -6,7 +6,7 @@ import requests
 from google.oauth2.credentials import Credentials
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-SHEET_NAME   = "Uber Sentiment Pipeline"
+SHEET_ID     = "1cmRVm28yx0tnz3RVzKVIF-XeigatHE82_Tg9jtPt6zU"  # "Uber Sentiment Pipeline"
 ALL_VERSIONS = "All Versions"
 
 SAMPLE_REVIEWS = [
@@ -331,7 +331,7 @@ def get_processed_data():
         # Connect to Google Sheets and fetch data
         creds  = Credentials(token=access_token)
         client = gspread.authorize(creds)
-        sheet  = client.open(SHEET_NAME).sheet1
+        sheet  = client.open_by_key(SHEET_ID).sheet1
         data   = sheet.get_all_records()
 
         if not data:
