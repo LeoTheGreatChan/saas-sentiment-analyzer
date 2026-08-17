@@ -3,7 +3,8 @@
 
 **Live Demo → [saas-sentiment-analyzer.streamlit.app](https://saas-sentiment-analyzer.streamlit.app/)**  
 **Source Code → [github.com/LeoTheGreatChan/saas-sentiment-analyzer](https://github.com/LeoTheGreatChan/saas-sentiment-analyzer)**  
-*Part of a three-project portfolio built on the same discipline: start from a real operational problem, decide deliberately where AI is trusted and where control stays in deterministic code, then test, verify, and measure whether it actually worked. [ops-analytics-pipeline](https://github.com/LeoTheGreatChan/ops-analytics-pipeline) applies it to a 43,739-row delivery dataset behind a validated delay-risk model; [complaint-triage-orchestrator](https://github.com/LeoTheGreatChan/complaint-triage-orchestrator) applies it to a four-agent compliance workflow behind a deterministic escalation gate. Full portfolio: [github.com/LeoTheGreatChan](https://github.com/LeoTheGreatChan).*
+
+*Part of a three-project portfolio built on the same discipline: start from a real operational problem, decide deliberately where AI is trusted and where control stays in deterministic code, then test, verify, and measure whether it actually worked. [ops-analytics-pipeline](https://github.com/LeoTheGreatChan/ops-analytics-pipeline) applies it to a 43,739-row delivery dataset behind a validated delay-risk model; [complaint-triage-orchestrator](https://github.com/LeoTheGreatChan/complaint-triage-orchestrator) applies it to a four-agent compliance workflow behind a deterministic escalation gate. Full portfolio: [github.com/LeoTheGreatChan](https://github.com/LeoTheGreatChan).*  
 ---
 
 ## The Problem
