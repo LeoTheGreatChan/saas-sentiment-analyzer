@@ -2,8 +2,10 @@ name: Keep Streamlit app awake
 
 on:
   schedule:
-    # Every 6 hours — well under Streamlit Community Cloud's idle-sleep window.
-    - cron: "0 */6 * * *"
+    # Once an hour, offset from :00 to avoid GitHub's top-of-hour
+    # scheduling congestion. 6-hourly wasn't frequent enough to keep
+    # Streamlit Community Cloud's free tier from sleeping.
+    - cron: "7 */1 * * *"
   workflow_dispatch: {}
 
 jobs:
