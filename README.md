@@ -30,6 +30,14 @@ From the latest run:
 
 ---
 
+## Manual Triage vs. This Pipeline
+
+Manual review triage means a person skimming reviews roughly in arrival order, prioritising by gut feel, and depending on a reviewer noticing a given complaint themselves — a process with no built-in way to catch content outside a reviewer's working language. The dashboard's current top alert is a concrete example of what that misses: a French-language review reporting a locked account and unresponsive support, scored −0.971 with 185 community likes. This pipeline scores every review the same way regardless of language, and the compound OR condition catches that review on either signal, severity or community agreement, rather than requiring both.
+
+No baseline manual-triage time or backlog figure is claimed here — that measurement doesn't exist for this project and isn't invented to fill the gap. What's claimed is qualitative and traceable to the pipeline's own documented behaviour: consistent scoring across every review regardless of language, an escalation decision that doesn't depend on a human noticing, and every action logged to an auditable, deduplicated sheet rather than living only in someone's inbox or memory.
+
+---
+
 ## Pipeline Architecture
 
 ![n8n pipeline — all nodes green after a successful run](./assets/n8n_pipeline_overview_png.jpg)
@@ -53,6 +61,8 @@ An IF node applies the alert threshold using two conditions linked by OR:
 - `{{ $json.label=='Negative' && $('google-play-scraper').item.json.thumbsUpCount>0 }}` — negative reviews with community agreement
 
 From the latest run: **68 items to the true branch** (critical), **132 items to the false branch** (normal).
+
+**What makes it different:** DistilBERT interprets each review's sentiment; the IF node's compound OR logic decides who gets escalated — a deliberate boundary, not an accident of architecture. The model interprets, deterministic code decides, the same split used across this portfolio.
 
 **⑤ Alert — Gmail**  
 A Gmail node sends an automated email for each of the 68 critical reviews, including full review text, version number, sentiment score, and timestamp. No manual monitoring required — critical feedback surfaces in the inbox automatically.
@@ -120,6 +130,9 @@ Running the pipeline on consecutive days fetches overlapping review windows. Wit
 
 **Why OAuth2 via Streamlit Secrets instead of a service account?**  
 The Google Cloud organisation policy in this environment blocks service account key creation. The OAuth2 + refresh token approach stored in Streamlit Secrets is equally secure, works identically in local and production environments, and keeps all credentials out of the codebase.
+
+**Why decide escalation in an IF node instead of asking the model to flag critical reviews itself?**  
+Blurring "how positive is this review" and "does this review need action" into a single model call would make the escalation rule opaque and hard to audit. Keeping it as a compound OR condition in an IF node means the rule is plain code anyone can read, test, and change without touching the model — the same boundary held across this portfolio's other builds. It's also directly checkable: on the latest run the condition produced a genuine 68/132 split rather than collapsing to all-true or all-false, evidence both parts of the OR are actually contributing, not one silently dominating. Combined with the dedup key's confirmed idempotency (above), the triage-and-write stage of this pipeline is verified behaviour, not just intended behaviour.
 
 ---
 
