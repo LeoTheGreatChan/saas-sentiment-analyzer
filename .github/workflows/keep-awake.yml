@@ -3,8 +3,7 @@ name: Keep Streamlit app awake
 on:
   schedule:
     # Once an hour, offset from :00 to avoid GitHub's top-of-hour
-    # scheduling congestion. 6-hourly wasn't frequent enough to keep
-    # Streamlit Community Cloud's free tier from sleeping.
+    # scheduling congestion.
     - cron: "7 */1 * * *"
   workflow_dispatch: {}
 
@@ -12,9 +11,20 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping app to prevent it from sleeping
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Playwright
         run: |
-          curl -sSL -c cookies.txt -b cookies.txt \
-            -A "Mozilla/5.0 (compatible; KeepAwakeBot/1.0)" \
-            -o /dev/null -w "HTTP %{http_code}\n" \
-            "https://saas-sentiment-analyzer.streamlit.app/"
+          pip install playwright
+          playwright install --with-deps chromium
+
+      # A plain HTTP ping only fetches the pre-JS HTML shell and can't
+      # open the WebSocket session Streamlit Cloud uses to detect a real
+      # viewer, so it never actually kept the app awake. This uses a
+      # headless browser instead, which behaves like a real visitor.
+      - name: Visit app with a real browser session
+        run: python .github/scripts/wake_app.py
