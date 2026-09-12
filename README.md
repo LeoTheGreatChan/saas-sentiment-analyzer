@@ -34,7 +34,7 @@ From the latest run:
 
 Manual review triage means a person skimming reviews roughly in arrival order, prioritising by gut feel, and depending on a reviewer noticing a given complaint themselves — a process with no built-in way to catch content outside a reviewer's working language. The dashboard's current top alert is a concrete example of what that misses: a French-language review reporting a locked account and unresponsive support, scored −0.971 with 185 community likes. This pipeline scores every review the same way regardless of language, and the compound OR condition catches that review on either signal, severity or community agreement, rather than requiring both.
 
-No baseline manual-triage time or backlog figure is claimed here — that measurement doesn't exist for this project and isn't invented to fill the gap. What's claimed is qualitative and traceable to the pipeline's own documented behaviour: consistent scoring across every review regardless of language, an escalation decision that doesn't depend on a human noticing, and every action logged to an auditable, deduplicated sheet rather than living only in someone's inbox or memory.
+The comparison here is qualitative, grounded in the pipeline's own documented behaviour rather than a measured time-saved figure: consistent scoring across every review regardless of language, an escalation decision that doesn't depend on a human noticing, and every action logged to an auditable, deduplicated sheet rather than living only in someone's inbox or memory.
 
 ---
 
