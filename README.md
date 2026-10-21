@@ -26,7 +26,7 @@ From the latest run:
 - **379 reviews** processed across multiple app versions
 - **+0.35 average sentiment score** — net positive but with significant negative clusters
 - **123 critical alerts** automatically identified and routed
-- **68 Gmail alerts** fired on that run, one per review the triage rule flagged
+- **68 Gmail alerts** sent on that run, one per review the triage rule flagged; re-runs alert each review only once
 
 ---
 
@@ -44,13 +44,15 @@ The comparison here is qualitative, grounded in the pipeline's own documented be
 
 **Built on a live, accumulating feed** — each run appends new reviews to the same Google Sheet, which currently holds 379 deduplicated reviews across multiple app versions.
 
-**Stored fields:** ReviewId, Date, Version, Review, Sentiment, Score, Likes.
+**Stored fields:** ReviewId, Date, Version, Review, Sentiment, Score, Likes, AlertedAt (when the review's alert email was sent; `pre-log` for reviews alerted before the alert log was added).
 
 ---
 
 ## Data Quality & Validation
 
 **Deduplication by ReviewId:** consecutive runs fetch overlapping review windows. Every write uses `Append or Update Row` keyed on `ReviewId`, so a re-run updates existing rows rather than duplicating them, and version-level averages stay accurate across repeated runs.
+
+**Alert deduplication with AlertedAt:** each run starts by reading the sheet's `AlertedAt` column, and a Code node drops any flagged review that already has one before the Gmail step. After each successful send, `Record AlertedAt` writes the send time back to that review's row, so the alert log lives in the same auditable sheet as the data. The main write leaves `AlertedAt` untouched, because `Append or Update Row` only writes the cells it maps. A send that fails, such as one over Gmail's per-minute sending quota, goes to the Gmail node's error output without a timestamp, and is retried on the next run that fetches that review again. Verified on a copy of the sheet: a run that hit the sending quota recorded only the alerts that went out, the following runs sent the remainder, and an immediate re-run sent no alerts, added no rows, and left every `AlertedAt` value unchanged.
 
 **What the score means:** the scorer returns the model's confidence in its label, signed by polarity, from −1.0 (confidently negative) to +1.0 (confidently positive). A score of −0.971 means the model is 97.1% confident the review is negative; it measures certainty, not the intensity of the complaint. The triage threshold of −0.6 is therefore a confidence cut-off on negative labels.
 
@@ -64,11 +66,14 @@ The comparison here is qualitative, grounded in the pipeline's own documented be
 
 ```mermaid
 flowchart TD
-    T(["① Manual Trigger"]) --> I["② Ingest<br/>google-play-scraper, 200 reviews"]
+    T(["① Manual Trigger"]) --> R["Read alert log<br/>AlertedAt column"]
+    R --> I["② Ingest<br/>google-play-scraper, 200 reviews"]
     I --> S["③ Score<br/>DistilBERT via Flask /score"]
     S --> G{"④ Triage — IF node<br/>score &lt; −0.6 OR (Negative AND likes &gt; 0)"}
-    G -->|"critical (68)"| A["⑤ Gmail alert"]
-    A --> W["⑥ Google Sheets<br/>Append or Update on ReviewId"]
+    G -->|"critical (68)"| X["Drop already-alerted reviews"]
+    X --> A["⑤ Gmail alert<br/>new alerts only"]
+    A --> L["Record AlertedAt<br/>update on ReviewId"]
+    G -->|"critical (68)"| W["⑥ Google Sheets<br/>Append or Update on ReviewId"]
     G -->|"normal (132)"| W
     W --> D["Streamlit dashboard<br/>read-only OAuth2, 5-min cache"]
 ```
@@ -98,12 +103,12 @@ From the latest run: **68 items to the true branch** (critical), **132 items to 
 **What makes it different:** DistilBERT interprets each review's sentiment; the IF node's compound OR logic decides who gets escalated. The model interprets, deterministic code decides — the same split used across this portfolio.
 
 **⑤ Alert — Gmail**  
-A Gmail node sends an automated email for each of the 68 critical reviews, including full review text, version number, sentiment score, and timestamp. No manual monitoring required — critical feedback surfaces in the inbox automatically.
+A Gmail node sends an automated email for each critical review that hasn't been alerted on an earlier run, including full review text, version number, sentiment score, and timestamp. No manual monitoring required — critical feedback surfaces in the inbox automatically, once per review: `Drop already-alerted reviews` filters out reviews with an `AlertedAt` value before the send, and `Record AlertedAt` timestamps each review after its email goes out (see Data Quality & Validation).
 
 **⑥ Write — Google Sheets (deduplicated)**  
 ![Google Sheets node showing all 7 field mappings](./assets/n8n_sheets_node_png.jpg)
 
-A Google Sheets node writes all 200 scored reviews using `Append or Update Row` with `ReviewId` as the deduplication key. Re-running the pipeline on consecutive days never produces duplicate rows — the operation is fully idempotent. Field mappings pull from two upstream nodes: review metadata from `google-play-scraper`, sentiment label and score from `HTTP Request for Sentiment Score`.
+A Google Sheets node writes all 200 scored reviews using `Append or Update Row` with `ReviewId` as the deduplication key. Re-running the pipeline on consecutive days never produces duplicate rows, and this write never touches the `AlertedAt` column; together with the alert log in stage ⑤, a re-run produces neither duplicate rows nor duplicate alerts. Field mappings pull from two upstream nodes: review metadata from `google-play-scraper`, sentiment label and score from `HTTP Request for Sentiment Score`.
 
 ---
 
@@ -139,7 +144,8 @@ One component in this pipeline is a model; everything that decides or records an
 |---|---|---|
 | Sentiment label and score | DistilBERT (SST-2 checkpoint) served by Flask | Pretrained ML, inference only |
 | Escalation decision | Compound OR condition in an n8n IF node | Deterministic rule |
-| Deduplication | Append or Update keyed on ReviewId | Deterministic |
+| Row deduplication | Append or Update keyed on ReviewId | Deterministic |
+| Alert deduplication | AlertedAt lookup in a Code node, written back after each successful send | Deterministic |
 | Alerts and storage | n8n Gmail and Google Sheets nodes | Integration |
 | Dashboard aggregates | pandas group-bys by version and hour of day | Descriptive statistics |
 
@@ -154,7 +160,7 @@ One component in this pipeline is a model; everything that decides or records an
 | Sentiment scoring | DistilBERT (distilbert-base-uncased-finetuned-sst-2-english) |
 | Scorer API | Python · Flask |
 | Alert delivery | Gmail (via n8n OAuth node) |
-| Data store | Google Sheets (append + dedup via ReviewId) |
+| Data store | Google Sheets (append + dedup via ReviewId, alert log in AlertedAt) |
 | Dashboard | Python · Streamlit |
 | Auth | Google OAuth2, read-only Sheets scope, via Streamlit Secrets |
 | Hosting | Streamlit Community Cloud, kept warm by an hourly headless-browser visit (GitHub Actions + Playwright) |
@@ -169,11 +175,11 @@ One component in this pipeline is a model; everything that decides or records an
 
 **Why a persistent Flask scorer instead of scoring inside n8n?** n8n's Code node would reload the DistilBERT model on every execution. A persistent Flask service loads the model once and keeps it warm — scoring 200 reviews takes seconds rather than minutes.
 
-**Why deduplication by ReviewId?** Running the pipeline on consecutive days fetches overlapping review windows. Without deduplication, the same review appears multiple times and skews version-level sentiment averages. ReviewId as the match key makes the pipeline idempotent — safe to re-run at any time.
+**Why deduplication by ReviewId?** Running the pipeline on consecutive days fetches overlapping review windows. Without deduplication, the same review appears multiple times and skews version-level sentiment averages. ReviewId is the match key for both the row write and the alert log, so a re-run adds no duplicate rows and sends no duplicate alerts — safe to re-run at any time.
 
 **Why OAuth2 via Streamlit Secrets instead of a service account?** A refresh token stored in Streamlit Secrets works identically in local and production environments, keeps every credential out of the codebase, and is scoped read-only to the single spreadsheet the dashboard reads (`spreadsheets.readonly`, no Drive access). Service-account key creation is disabled by the Google Cloud organisation policy in this environment, which settled the choice.
 
-**Why decide escalation in an IF node instead of asking the model to flag critical reviews itself?** Blurring "how positive is this review" and "does this review need action" into a single model call would make the escalation rule opaque and hard to audit. Keeping it as a compound OR condition in an IF node means the rule is plain code anyone can read, test, and change without touching the model — the same boundary held across this portfolio's other builds. It's also directly checkable, which is how the rule's current behaviour surfaced: counted against the full sheet, the likes branch adds no reviews beyond the score branch (see Data Quality & Validation). Because the rule is two plain conditions in one node, tightening it is a one-field change, with no prompt rewrite or retraining involved. The ReviewId dedup key is verified the same way: re-runs update existing rows rather than duplicating them.
+**Why decide escalation in an IF node instead of asking the model to flag critical reviews itself?** Blurring "how positive is this review" and "does this review need action" into a single model call would make the escalation rule opaque and hard to audit. Keeping it as a compound OR condition in an IF node means the rule is plain code anyone can read, test, and change without touching the model — the same boundary held across this portfolio's other builds. It's also directly checkable, which is how the rule's current behaviour surfaced: counted against the full sheet, the likes branch adds no reviews beyond the score branch (see Data Quality & Validation). Because the rule is two plain conditions in one node, tightening it is a one-field change, with no prompt rewrite or retraining involved. The ReviewId dedup key is verified the same way: re-runs update existing rows rather than duplicating them, and an immediate re-run on a copy of the sheet sent no alerts and left every `AlertedAt` value unchanged.
 
 ---
 
@@ -181,7 +187,7 @@ One component in this pipeline is a model; everything that decides or records an
 
 1. `pip install -r requirements.txt`
 2. Start the scorer: `python scorer.py` — loads DistilBERT once and serves `POST /score` (body `{"text": "..."}`) and `GET /health` on port 5000.
-3. Import `n8n_workflow.json` into n8n, attach your own Gmail and Google Sheets credentials, and set the Gmail recipient and the Sheets document (both ship as placeholders). The HTTP Request node already points at `http://127.0.0.1:5000/score`.
+3. Import `n8n_workflow.json` into n8n, attach your own Gmail and Google Sheets credentials, and set the Gmail recipient and the Sheets document on all three Google Sheets nodes (both ship as placeholders). Add an `AlertedAt` header to the sheet, in the column after `Likes`. The HTTP Request node already points at `http://127.0.0.1:5000/score`.
 4. Run the dashboard: set `SHEET_ID` in `app.py` to your sheet, add `.streamlit/secrets.toml` with a `[gcp]` section containing `client_id`, `client_secret`, and a `refresh_token` issued for the `spreadsheets.readonly` scope, then `streamlit run app.py`.
 
 ---
