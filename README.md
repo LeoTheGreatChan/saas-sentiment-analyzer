@@ -116,7 +116,7 @@ A Google Sheets node writes all 200 scored reviews using `Append or Update Row` 
 
 ![Product Insights Dashboard showing 379 reviews, +0.35 avg sentiment, 123 critical alerts](./assets/dashboard_overview_png.jpg)
 
-A Streamlit dashboard reads live from Google Sheets through a read-only OAuth2 credential scoped to that one spreadsheet, with a 5-minute cache TTL. No redeployment needed when new data arrives — run the n8n workflow and the dashboard updates automatically on the next page load.
+A Streamlit dashboard reads live from Google Sheets through a read-only OAuth2 credential (`spreadsheets.readonly`, no Drive access), with a 5-minute cache TTL. No redeployment needed when new data arrives — run the n8n workflow and the dashboard updates automatically on the next page load.
 
 **Four headline metric cards** update dynamically when the version filter changes:
 - **379** total reviews in current selection
@@ -177,7 +177,7 @@ One component in this pipeline is a model; everything that decides or records an
 
 **Why deduplication by ReviewId?** Running the pipeline on consecutive days fetches overlapping review windows. Without deduplication, the same review appears multiple times and skews version-level sentiment averages. ReviewId is the match key for both the row write and the alert log, so a re-run adds no duplicate rows and sends no duplicate alerts — safe to re-run at any time.
 
-**Why OAuth2 via Streamlit Secrets instead of a service account?** A refresh token stored in Streamlit Secrets works identically in local and production environments, keeps every credential out of the codebase, and is scoped read-only to the single spreadsheet the dashboard reads (`spreadsheets.readonly`, no Drive access). Service-account key creation is disabled by the Google Cloud organisation policy in this environment, which settled the choice.
+**Why OAuth2 via Streamlit Secrets instead of a service account?** A refresh token stored in Streamlit Secrets works identically in local and production environments, keeps every credential out of the codebase, and is read-only: the `spreadsheets.readonly` scope can read the account's spreadsheets but never change them, and grants no Drive access. The dashboard opens its sheet by ID, so it never needs to search Drive. Service-account key creation is disabled by the Google Cloud organisation policy in this environment, which settled the choice.
 
 **Why decide escalation in an IF node instead of asking the model to flag critical reviews itself?** Blurring "how positive is this review" and "does this review need action" into a single model call would make the escalation rule opaque and hard to audit. Keeping it as a compound OR condition in an IF node means the rule is plain code anyone can read, test, and change without touching the model — the same boundary held across this portfolio's other builds. It's also directly checkable, which is how the rule's current behaviour surfaced: counted against the full sheet, the likes branch adds no reviews beyond the score branch (see Data Quality & Validation). Because the rule is two plain conditions in one node, tightening it is a one-field change, with no prompt rewrite or retraining involved. The ReviewId dedup key is verified the same way: re-runs update existing rows rather than duplicating them, and an immediate re-run on a copy of the sheet sent no alerts and left every `AlertedAt` value unchanged.
 
