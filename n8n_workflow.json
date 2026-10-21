@@ -14,16 +14,39 @@
     },
     {
       "parameters": {
-        "jsCode": "const gplay = require('google-play-scraper').default;\n\nconst result = await gplay.reviews({\n  appId: 'com.ubercab',\n  lang: 'en',\n  country: 'us',\n  sort: gplay.sort.NEWEST,\n  num: 200,\n});\n\nreturn result.data.map(review => ({\n  json: {\n    reviewId:             review.id,\n    content:              review.text,\n    reviewCreatedVersion: review.version ?? 'Unknown',\n    at:                   new Date(review.date).toISOString(),\n    thumbsUpCount:        review.thumbsUp ?? 0,\n  }\n}));"
+        "url": "http://127.0.0.1:5000/reviews",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "app_id",
+              "value": "com.ubercab"
+            },
+            {
+              "name": "lang",
+              "value": "en"
+            },
+            {
+              "name": "country",
+              "value": "us"
+            },
+            {
+              "name": "count",
+              "value": "200"
+            }
+          ]
+        },
+        "options": {}
       },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "584c4ffb-8968-4e61-bbba-2e4e7c966d8e",
+      "name": "google-play-scraper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
       "position": [
         -32,
         -416
       ],
-      "id": "cb174674-ee63-4288-ba0e-1d1e72a2bca3",
-      "name": "google-play-scraper"
+      "executeOnce": true
     },
     {
       "parameters": {
