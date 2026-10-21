@@ -6,7 +6,7 @@
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        -256,
+        -480,
         -416
       ],
       "id": "42909c1c-a18e-43ee-8fc5-146c719c0f69",
@@ -103,8 +103,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
       "position": [
-        400,
-        -288
+        640,
+        -96
       ],
       "id": "34032f04-d2d4-48f5-bdfd-6a76150007c9",
       "name": "Send a message",
@@ -112,7 +112,8 @@
         "gmailOAuth2": {
           "name": "Gmail account"
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -225,11 +226,186 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        592,
-        -160
+        640,
+        -320
       ],
       "id": "cd5aff13-509a-42b8-a77b-7aaf483451e2",
       "name": "Append or update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Uber Sentiment Pipeline",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=0"
+        },
+        "filtersUI": {},
+        "options": {}
+      },
+      "id": "6ba44299-e3c5-4ea1-8879-2a1c92375d51",
+      "name": "Read alert log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -256,
+        -416
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ReviewIds already alerted on earlier runs, from the sheet's AlertedAt column.\nconst alerted = new Set(\n  $('Read alert log').all()\n    .filter(row => row.json.AlertedAt)\n    .map(row => String(row.json.ReviewId))\n);\n\nconst fresh = [];\n$input.all().forEach((item, i) => {\n  const reviewId = String($('google-play-scraper').itemMatching(i).json.reviewId);\n  if (!alerted.has(reviewId)) {\n    // pairedItem keeps $('google-play-scraper').item resolvable in Gmail and Record AlertedAt.\n    fresh.push({ json: item.json, pairedItem: { item: i } });\n  }\n});\nreturn fresh;"
+      },
+      "id": "0224be7e-218b-4ddb-ac87-bf61cd69978f",
+      "name": "Drop already-alerted reviews",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Uber Sentiment Pipeline",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ReviewId": "={{ $('google-play-scraper').item.json.reviewId }}",
+            "AlertedAt": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "ReviewId"
+          ],
+          "schema": [
+            {
+              "id": "ReviewId",
+              "displayName": "ReviewId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Version",
+              "displayName": "Version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Review",
+              "displayName": "Review",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Sentiment",
+              "displayName": "Sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Score",
+              "displayName": "Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Likes",
+              "displayName": "Likes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "AlertedAt",
+              "displayName": "AlertedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "12f5c662-d6a3-46a4-a9c6-7d109046b53c",
+      "name": "Record AlertedAt",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        864,
+        -96
+      ],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "name": "Google Sheets account"
@@ -242,7 +418,7 @@
       "main": [
         [
           {
-            "node": "google-play-scraper",
+            "node": "Read alert log",
             "type": "main",
             "index": 0
           }
@@ -264,7 +440,12 @@
       "main": [
         [
           {
-            "node": "Send a message",
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Drop already-alerted reviews",
             "type": "main",
             "index": 0
           }
@@ -293,7 +474,30 @@
       "main": [
         [
           {
-            "node": "Append or update row in sheet",
+            "node": "Record AlertedAt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Read alert log": {
+      "main": [
+        [
+          {
+            "node": "google-play-scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drop already-alerted reviews": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
             "type": "main",
             "index": 0
           }
