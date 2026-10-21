@@ -1,0 +1,314 @@
+{
+  "name": "Uber Sentiment Pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        -416
+      ],
+      "id": "42909c1c-a18e-43ee-8fc5-146c719c0f69",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "const gplay = require('google-play-scraper').default;\n\nconst result = await gplay.reviews({\n  appId: 'com.ubercab',\n  lang: 'en',\n  country: 'us',\n  sort: gplay.sort.NEWEST,\n  num: 200,\n});\n\nreturn result.data.map(review => ({\n  json: {\n    reviewId:             review.id,\n    content:              review.text,\n    reviewCreatedVersion: review.version ?? 'Unknown',\n    at:                   new Date(review.date).toISOString(),\n    thumbsUpCount:        review.thumbsUp ?? 0,\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        -416
+      ],
+      "id": "cb174674-ee63-4288-ba0e-1d1e72a2bca3",
+      "name": "google-play-scraper"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4f77df87-8ad7-4302-b0a8-ccd4fe0eb2ed",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": -0.6,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            },
+            {
+              "id": "d84cba2e-fa00-41a8-b492-e9df3c0f7a6c",
+              "leftValue": "={{ $json.label=='Negative' && $('google-play-scraper').item.json.thumbsUpCount>0}}",
+              "rightValue": "Negative",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        192,
+        -176
+      ],
+      "id": "6d68ce82-6e3b-4cde-ba35-3d95e2154363",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5000/score",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.content }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        192,
+        -416
+      ],
+      "id": "92ca7826-002a-4e70-9242-1020d2feea46",
+      "name": "HTTP Request for Sentiment Score"
+    },
+    {
+      "parameters": {
+        "sendTo": "you@example.com",
+        "subject": "=Critical Uber Review Alert — {{ $('google-play-scraper').item.json.reviewCreatedVersion }}",
+        "emailType": "text",
+        "message": "=Score: {{ $json.score }} Version: {{ $('google-play-scraper').item.json.reviewCreatedVersion }} Date: {{ $('google-play-scraper').item.json.at }}  Review: {{ $('google-play-scraper').item.json.content }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        400,
+        -288
+      ],
+      "id": "34032f04-d2d4-48f5-bdfd-6a76150007c9",
+      "name": "Send a message",
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Uber Sentiment Pipeline",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $('google-play-scraper').item.json.at }}",
+            "Version": "={{ $('google-play-scraper').item.json.reviewCreatedVersion }}",
+            "Review": "={{ $('google-play-scraper').item.json.content }}",
+            "Likes": "={{ $('google-play-scraper').item.json.thumbsUpCount }}",
+            "ReviewId": "={{ $('google-play-scraper').item.json.reviewId }}",
+            "Sentiment": "={{ $('HTTP Request for Sentiment Score').item.json.label }}",
+            "Score": "={{ $('HTTP Request for Sentiment Score').item.json.score }}"
+          },
+          "matchingColumns": [
+            "ReviewId"
+          ],
+          "schema": [
+            {
+              "id": "ReviewId",
+              "displayName": "ReviewId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Version",
+              "displayName": "Version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Review",
+              "displayName": "Review",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sentiment",
+              "displayName": "Sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Score",
+              "displayName": "Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Likes",
+              "displayName": "Likes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        592,
+        -160
+      ],
+      "id": "cd5aff13-509a-42b8-a77b-7aaf483451e2",
+      "name": "Append or update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "google-play-scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "google-play-scraper": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request for Sentiment Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request for Sentiment Score": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
