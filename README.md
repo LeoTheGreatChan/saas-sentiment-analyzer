@@ -40,7 +40,7 @@ The comparison here is qualitative, grounded in the pipeline's own documented be
 
 ## Data
 
-**Source:** live Uber app reviews from the Google Play Store, fetched on each run with [`google-play-scraper`](https://www.npmjs.com/package/google-play-scraper) (no API key required), 200 most recent reviews per run from the US store with English requested (`country: 'us'`, `lang: 'en'`).
+**Source:** live Uber app reviews from the Google Play Store, fetched on each run with the Python [`google-play-scraper`](https://pypi.org/project/google-play-scraper/) package (no API key required), 200 most recent reviews per run from the US store with English requested (`country=us`, `lang=en`).
 
 **Built on a live, accumulating feed** — each run appends new reviews to the same Google Sheet, which currently holds 379 deduplicated reviews across multiple app versions.
 
@@ -58,6 +58,8 @@ The comparison here is qualitative, grounded in the pipeline's own documented be
 
 **Language coverage:** the scoring checkpoint, `distilbert-base-uncased-finetuned-sst-2-english`, is trained on English sentences. Ingestion requests English-language reviews, and non-English reviews still come through — the current top alert is in French. Non-English reviews pass through the same scorer and the same escalation rule, and their scores are a usable but uncalibrated signal. A multilingual sentiment model is the first entry under Extension Opportunities; the Flask wrapper and every downstream node stay the same.
 
+**Review timestamps:** stored in UTC to the millisecond, computed from the raw seconds-and-nanoseconds value Google Play returns. The JavaScript scraper this pipeline previously used dropped the zero-padding on the nanoseconds, so about 1 in 10 timestamps was off by up to a second (`.075` stored as `.750`); each affected row is corrected the next time a run fetches it.
+
 **Escalation rule, checked against the full sheet:** the IF node flags a review when its score is below −0.6, or when it's labelled Negative with at least one like. Across all 379 stored reviews, the score branch flags 123 and the likes branch flags 8, all 8 of which are already among the 123. The model reports high confidence on almost every review (123 of the 124 Negative-labelled reviews score below −0.6), so the threshold currently works out to "every negative review", and the likes branch adds no reviews of its own. Prioritisation happens on the dashboard instead, which ranks flagged reviews by community likes and then by score. Separating severity from polarity at the triage step is the second entry under Extension Opportunities.
 
 ---
@@ -67,7 +69,7 @@ The comparison here is qualitative, grounded in the pipeline's own documented be
 ```mermaid
 flowchart TD
     T(["① Manual Trigger"]) --> R["Read alert log<br/>AlertedAt column"]
-    R --> I["② Ingest<br/>google-play-scraper, 200 reviews"]
+    R --> I["② Ingest<br/>Flask /reviews, 200 reviews"]
     I --> S["③ Score<br/>DistilBERT via Flask /score"]
     S --> G{"④ Triage — IF node<br/>score &lt; −0.6 OR (Negative AND likes &gt; 0)"}
     G -->|"critical (68)"| X["Drop already-alerted reviews"]
@@ -85,8 +87,8 @@ The pipeline runs as an n8n workflow with six stages, processing 200 reviews per
 **① Trigger — Manual (upgradeable to Schedule)**  
 A manual trigger node fires the workflow on demand. Upgrading to a scheduled run — e.g. every Sunday at 9am — requires replacing this single node with a Schedule Trigger. Every downstream node stays identical.
 
-**② Ingest — google-play-scraper**  
-A JavaScript Code node fetches the latest Uber reviews from Google Play using `google-play-scraper` (no API key required). Returns 200 structured items per run with consistent fields: review text, app version, timestamp, and community likes count.
+**② Ingest — google-play-scraper via Flask**  
+An HTTP Request node (named `google-play-scraper`) calls the local Flask service's `GET /reviews` endpoint, which fetches the latest Uber reviews from Google Play with the Python `google-play-scraper` package (no API key required). Returns 200 structured items per run with consistent fields: review text, app version, timestamp (UTC, to the millisecond), and community likes count.
 
 **③ Score — DistilBERT via Flask**  
 An HTTP Request node POSTs each review to a local Flask endpoint (`POST: http://127.0.0.1:5000/score`) wrapping a DistilBERT model fine-tuned on SST-2. Each review returns a sentiment label (Positive/Negative) and a confidence score from −1.0 to +1.0. The scorer runs as a persistent service — the model loads once and stays warm across all 200 calls.
@@ -156,9 +158,9 @@ One component in this pipeline is a model; everything that decides or records an
 | Layer | Technology |
 |---|---|
 | Orchestration | n8n (self-hosted, local) |
-| Review ingestion | google-play-scraper (JS, no API key) |
+| Review ingestion | google-play-scraper (Python, served by the local Flask service; no API key) |
 | Sentiment scoring | DistilBERT (distilbert-base-uncased-finetuned-sst-2-english) |
-| Scorer API | Python · Flask |
+| Scorer and ingestion API | Python · Flask |
 | Alert delivery | Gmail (via n8n OAuth node) |
 | Data store | Google Sheets (append + dedup via ReviewId, alert log in AlertedAt) |
 | Dashboard | Python · Streamlit |
@@ -173,7 +175,7 @@ One component in this pipeline is a model; everything that decides or records an
 
 **Why Google Sheets over a database?** Sheets provides a free, inspectable, shareable data store with zero infrastructure overhead. The architecture is identical whether the destination is Sheets, BigQuery, or Postgres — only the write node changes.
 
-**Why a persistent Flask scorer instead of scoring inside n8n?** n8n's Code node would reload the DistilBERT model on every execution. A persistent Flask service loads the model once and keeps it warm — scoring 200 reviews takes seconds rather than minutes.
+**Why a persistent Flask service instead of doing the work inside n8n?** n8n's Code node would reload the DistilBERT model on every execution. A persistent Flask service loads the model once and keeps it warm — scoring 200 reviews takes seconds rather than minutes. Ingestion runs there too: n8n 2.x executes Code nodes in a sandbox that blocks the scraping library, and serving reviews from the same Flask service keeps that sandbox switched on.
 
 **Why deduplication by ReviewId?** Running the pipeline on consecutive days fetches overlapping review windows. Without deduplication, the same review appears multiple times and skews version-level sentiment averages. ReviewId is the match key for both the row write and the alert log, so a re-run adds no duplicate rows and sends no duplicate alerts — safe to re-run at any time.
 
@@ -186,7 +188,7 @@ One component in this pipeline is a model; everything that decides or records an
 ## Running It
 
 1. `pip install -r requirements.txt`
-2. Start the scorer: `python scorer.py` — loads DistilBERT once and serves `POST /score` (body `{"text": "..."}`) and `GET /health` on port 5000.
+2. Start the scorer and ingestion service: `python scorer.py` — loads DistilBERT once and serves `POST /score` (body `{"text": "..."}`), `GET /reviews` (latest Google Play reviews; `app_id`, `lang`, `country`, `count` query parameters), and `GET /health` on port 5000.
 3. Import `n8n_workflow.json` into n8n, attach your own Gmail and Google Sheets credentials, and set the Gmail recipient and the Sheets document on all three Google Sheets nodes (both ship as placeholders). Add an `AlertedAt` header to the sheet, in the column after `Likes`. The HTTP Request node already points at `http://127.0.0.1:5000/score`.
 4. Run the dashboard: set `SHEET_ID` in `app.py` to your sheet, add `.streamlit/secrets.toml` with a `[gcp]` section containing `client_id`, `client_secret`, and a `refresh_token` issued for the `spreadsheets.readonly` scope, then `streamlit run app.py`.
 
