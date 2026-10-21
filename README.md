@@ -1,4 +1,4 @@
-# Uber Review Sentiment Pipeline
+# SaaS Sentiment Intelligence Pipeline
 ### DistilBERT Scoring · Deterministic Triage Gate · Live Executive Dashboard
 
 **Live Demo →** [saas-sentiment-analyzer.streamlit.app](https://saas-sentiment-analyzer.streamlit.app/)  
